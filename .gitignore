@@ -1,0 +1,52 @@
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# Node and React
+node_modules/
+dist/
+build/
+coverage/
+.vite/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl
+crash.log
+
+# Testing
+playwright-report/
+test-results/
+
+# Logs and runtime files
+*.log
+logs/
+tmp/
+temp/
+
+# IDE settings
+.vscode/
+.idea/
+
+# Operating-system files
+.DS_Store
+Thumbs.db
+desktop.ini
