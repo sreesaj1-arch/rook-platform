@@ -68,6 +68,12 @@ Invoke-WebRequest -Uri http://127.0.0.1:8000/health/live -UseBasicParsing
 
 Expect HTTP 200 and `{"status":"alive"}`. Stop the foreground server with Ctrl+C in the terminal that started it. A liveness response means only that the API process handled the request; it does not claim database connectivity, readiness, or health of the monitored workload.
 
+## Continuous integration
+
+[Backend CI](../../.github/workflows/backend-ci.yml) runs on pull requests targeting `main`, pushes to `main`, and manual dispatch, without path filters. One Ubuntu job has a 10-minute timeout and read-only repository permissions; checkout does not persist credentials. Actions are pinned to full commit SHAs, and uv is pinned to 0.11.7.
+
+CI reads Python from `.python-version`, then runs `uv sync --locked --managed-python` and `uv run --locked python -m pytest` in `apps/api`. Test failures fail the job, and dependency warnings remain visible. It performs no deployment. Local workflow validation is not an actual GitHub Actions run; execution must be verified after pushing. Manual dispatch becomes available once the workflow exists on the default branch.
+
 ## Configuration and structure
 
 `ROOK_APP_NAME` sets the FastAPI title (default `Rook API`). Empty or whitespace-only values are rejected. This is the only application setting; `.env` files are not loaded automatically. Set it in PowerShell with `$env:ROOK_APP_NAME = 'Rook API'`.
