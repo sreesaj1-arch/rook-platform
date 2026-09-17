@@ -48,48 +48,47 @@ Automated traffic generation and controlled failure experiments may be used, but
 
 ## Planned Architecture
 
+This accepted V1 architecture is planned, not implemented. One FastAPI API process and one background-worker process will share Python backend modules and may initially use the same container image. Ingestion and incident detection will be modules, not separate network services.
+
 ```mermaid
 flowchart TD
-    W["Instrumented Distributed Workload"]
-    O["OpenTelemetry Collector"]
-    T["Telemetry Layer"]
-    K["Kubernetes and Deployment Events"]
-    I["Rook Telemetry Ingestor"]
-    E["Rook Incident Engine"]
-    D["PostgreSQL"]
-    A["FastAPI Control API"]
-    U["React Operations Dashboard"]
-    X["Optional AI Analysis"]
-
-    W --> O
-    O --> T
-    T --> I
-    K --> I
-    I --> E
-    E --> D
-    E --> X
-    X --> A
-    D --> A
-    A --> U
+    W["Pinned OpenTelemetry Demo"] --> O["OpenTelemetry Collector"]
+    O --> P["Prometheus: metrics"]
+    O --> J["Jaeger: traces, later enrichment"]
+    O --> L["OpenSearch: logs, later enrichment"]
+    P --> B["One background worker"]
+    J --> B
+    L --> B
+    B --> D[("PostgreSQL: product state")]
+    D --> A["FastAPI API"]
+    A --> U["React / TypeScript dashboard"]
 ```
 
-The OpenTelemetry Demo will be used as a representative external workload for live telemetry and controlled failure testing. Rook itself will be designed and implemented independently.
+Arrows show telemetry and product-data flow. The API will also query the same Prometheus instance for bounded chart data. PostgreSQL will store incidents, evidence references, observed changes, rule configuration, and worker checkpoints; it must not duplicate raw metrics, logs, or traces.
+
+The first implementation slice will be metrics-only. Logs and traces will enrich evidence later, followed by Kubernetes events and deployment observations during local Kubernetes development. Missing telemetry will be unknown, stale, or insufficient evidence, never automatically healthy. Deployment correlation will indicate temporal evidence, not proof of causation.
+
+A pinned OpenTelemetry Demo release will be the external workload, using the Demo's current load generator for real traffic and controlled failure testing. Rook itself will be designed and implemented independently. Optional AI analysis will be disabled by default and may summarize evidence, but cannot determine incident state.
+
+Development will progress from Docker Compose to local kind Kubernetes and Helm, then Argo CD, and finally temporary Terraform-provisioned GKE. V1 acceptance will require demonstrating canary deployment and safe operator-led rollback through a Git desired-state change. Automated rollback using Prometheus analysis and Argo Rollouts will remain a later enhancement.
 
 ## Planned Technology Stack
 
 | Area | Technologies |
 |---|---|
-| Backend | Python, FastAPI |
+| Backend | Shared Python modules; one FastAPI API process and one background worker |
 | Frontend | React, TypeScript |
-| Data | PostgreSQL, Redis |
-| Event Processing | Kafka where event-driven processing is justified |
-| Telemetry | OpenTelemetry, Prometheus, Grafana |
-| Containers | Docker |
-| Orchestration | Kubernetes, Helm |
-| Infrastructure | Terraform, Google Kubernetes Engine |
+| Product State | PostgreSQL; no raw telemetry duplication |
+| Telemetry Stores | Prometheus (metrics), Jaeger (traces), OpenSearch (logs) |
+| Collection and Exploration | OpenTelemetry Collector, Grafana |
+| Containers | Docker, Docker Compose for local development |
+| Orchestration | Local kind Kubernetes, Helm |
+| Infrastructure | Terraform, temporary Google Kubernetes Engine deployment |
 | CI/CD | GitHub Actions, Argo CD |
 | Testing | pytest, Vitest, Playwright, k6 |
 | Security | Secret Manager, Trivy, Dependabot |
+
+The table describes planned technologies to be introduced progressively. Redis, Kafka, and Celery are not required and are excluded from Rook V1 unless measured requirements later justify a new decision. Demo workload dependencies remain separate from Rook's control plane.
 
 ## Repository Structure
 
@@ -128,8 +127,15 @@ scripts/                 Development and operations utilities
 ## Documentation
 
 - [Project Charter](docs/PROJECT_CHARTER.md)
-- Architecture documents will be added under `docs/architecture/`.
-- Architecture Decision Records will be maintained under `docs/adr/`.
+- [Architecture Overview](docs/architecture/README.md)
+- [System Context](docs/architecture/system-context.md)
+- [Container View](docs/architecture/container-view.md)
+- [Telemetry and Incident Flow](docs/architecture/telemetry-and-incident-flow.md)
+- [Deployment Evolution](docs/architecture/deployment-evolution.md)
+- [ADR-0001: Modular Backend, API and Worker](docs/adr/0001-modular-backend-api-and-worker.md)
+- [ADR-0002: Real Telemetry and Demo Workload](docs/adr/0002-real-telemetry-and-demo-workload.md)
+- [ADR-0003: Telemetry Storage and Product State](docs/adr/0003-telemetry-storage-and-product-state.md)
+- [ADR-0004: Local-First Deployment](docs/adr/0004-local-first-deployment.md)
 - Operational runbooks will be maintained under `docs/runbooks/`.
 
 ## License
