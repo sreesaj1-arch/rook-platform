@@ -68,6 +68,59 @@ Invoke-WebRequest -Uri http://127.0.0.1:8000/health/live -UseBasicParsing
 
 Expect HTTP 200 and `{"status":"alive"}`. Stop the foreground server with Ctrl+C in the terminal that started it. A liveness response means only that the API process handled the request; it does not claim database connectivity, readiness, or health of the monitored workload.
 
+## Docker
+
+From the repository root, with Docker Desktop running Linux containers:
+
+```powershell
+docker build --tag rook-backend:local apps/api
+if ($LASTEXITCODE -ne 0) { throw 'Backend image build failed' }
+```
+
+The build context is `apps/api`. Both stages use the official [Python 3.13.13 slim-bookworm image](https://hub.docker.com/_/python/tags?name=3.13.13-slim-bookworm), matching `.python-version`; a build assertion checks that match. The builder installs [uv 0.11.7](https://github.com/astral-sh/uv/releases/tag/0.11.7) and runs `uv sync --locked --no-dev --no-editable`. Only the resulting virtual environment is copied into the runtime stage, leaving uv and isolated package-build tooling behind. The package is installed non-editably, without development dependencies. Image tags are version-pinned, not digest-pinned.
+
+The runtime uses UID/GID 10001 and starts the existing Uvicorn app factory on `0.0.0.0:8000` without reload. The build-context allowlist excludes local environments, caches, downloaded interpreters, and secret files. Do not put credentials in Python source.
+
+Run this verification block in the same PowerShell session. It binds only host localhost, checks HTTP and the runtime UID, prints logs, and cleans up only the container it creates. If port 8001 is occupied, leave the existing service alone and retry when the port is available.
+
+```powershell
+$containerName = 'rook-backend-check-' + [guid]::NewGuid().ToString('N')
+$containerId = docker create --name $containerName --publish 127.0.0.1:8001:8000 rook-backend:local
+if ($LASTEXITCODE -ne 0) { throw 'Container creation failed' }
+try {
+    docker start $containerId
+    if ($LASTEXITCODE -ne 0) { throw 'Container startup failed' }
+    $response = $null
+    for ($attempt = 0; $attempt -lt 30; $attempt++) {
+        try {
+            $response = Invoke-WebRequest -Uri http://127.0.0.1:8001/health/live -UseBasicParsing -TimeoutSec 2
+            break
+        } catch { Start-Sleep -Seconds 1 }
+    }
+    if ($null -eq $response -or $response.StatusCode -ne 200) { throw 'Liveness HTTP check failed' }
+    $body = $response.Content | ConvertFrom-Json
+    if ($body.status -ne 'alive' -or @($body.PSObject.Properties).Count -ne 1) { throw 'Unexpected liveness response' }
+    'HTTP {0}: {1}' -f $response.StatusCode, $response.Content
+    $containerUid = docker exec $containerId id -u
+    if ($LASTEXITCODE -ne 0 -or $containerUid -notmatch '^\d+$' -or [int]$containerUid -eq 0) { throw 'Non-root check failed' }
+    'Container UID: {0}' -f $containerUid
+} finally {
+    docker logs $containerId
+    docker stop $containerId
+    docker rm $containerId
+}
+```
+
+After a successful build, this cleanup retains `rook-backend:local`. No prune or cleanup of other containers is needed.
+
+The user completed direct Docker runtime verification and reported:
+
+- `GET http://127.0.0.1:8001/health/live` returned HTTP 200 and `{"status":"alive"}`.
+- `docker exec rook-backend-check id` confirmed UID/GID 10001.
+- Container logs showed successful Uvicorn startup and request handling.
+
+These results are from the user's local verification. The final documentation review did not repeat the Docker build or runtime tests.
+
 ## Continuous integration
 
 [Backend CI](../../.github/workflows/backend-ci.yml) runs on pull requests targeting `main`, pushes to `main`, and manual dispatch, without path filters. One Ubuntu job has a 10-minute timeout and read-only repository permissions; checkout does not persist credentials. Actions are pinned to full commit SHAs, and uv is pinned to 0.11.7.

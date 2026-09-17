@@ -1,0 +1,23 @@
+# Allow only package inputs; omit environments, caches, secrets, and tests.
+**
+!pyproject.toml
+!uv.lock
+!.python-version
+!src/
+!src/**
+
+# Exclude local artifacts even if placed inside the source tree.
+**/__pycache__/
+**/*.py[cod]
+**/.venv/
+**/venv/
+**/.uv-cache/
+**/.uv-python/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+**/secrets/
