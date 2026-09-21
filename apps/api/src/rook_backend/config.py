@@ -1,6 +1,6 @@
 """Validated configuration shared by backend entry points."""
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, HttpUrl
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,3 +18,8 @@ class Settings(BaseSettings):
     db_user: str = Field(default="rook_local", min_length=1)
     db_password: SecretStr | None = Field(default=None, repr=False)
     readiness_timeout_seconds: float = Field(default=3.0, ge=0.05, le=10.0)
+    prometheus_url: HttpUrl | None = Field(default=None, repr=False)
+    prometheus_namespace: str = Field(default="opentelemetry-demo", pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$")
+    prometheus_timeout_seconds: float = Field(default=2.0, ge=0.05, le=10)
+    prometheus_deadline_seconds: float = Field(default=8.0, ge=0.05, le=30)
+    prometheus_freshness_seconds: float = Field(default=120.0, ge=1, le=300)

@@ -1,6 +1,9 @@
 # Rook backend foundation
 
-This slice provides a FastAPI app factory, typed configuration, process liveness, and database readiness using SQLAlchemy and psycopg. It does not create product tables or incident records, or implement telemetry, a worker, or monitored-service health.
+This slice provides a FastAPI app factory, typed configuration, process liveness, database readiness, and optional read-only Prometheus service metrics. It does not create product tables or incidents, run a worker, or infer monitored-service health.
+
+For the live telemetry configuration, evidence semantics, current validation limits,
+and exact PowerShell build/start/comparison commands, see [live telemetry](live-telemetry.md).
 
 ## Current verification status
 
