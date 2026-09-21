@@ -1,0 +1,59 @@
+# Requires Docker Compose 2.24.4+ for !override.
+# Replace every upstream publication; removing ports does not affect container DNS.
+services:
+  ad:
+    ports: !override []
+  cart:
+    ports: !override []
+  checkout:
+    ports: !override []
+  currency:
+    ports: !override []
+  email:
+    ports: !override []
+  frontend:
+    ports: !override []
+  frontend-proxy:
+    ports: !override
+      - "127.0.0.1:8080:8080"
+  image-provider:
+    ports: !override []
+  load-generator:
+    ports: !override []
+  payment:
+    ports: !override []
+  product-catalog:
+    ports: !override []
+  quote:
+    ports: !override []
+  recommendation:
+    ports: !override []
+  shipping:
+    ports: !override []
+  flagd:
+    ports: !override []
+  flagd-ui:
+    ports: !override []
+    # The UI must not write feature-flag changes into the upstream checkout.
+    volumes:
+      - type: bind
+        source: ./src/flagd
+        target: /app/data
+        read_only: true
+  telemetry-docs:
+    ports: !override []
+  astronomy-db:
+    ports: !override []
+  valkey-cart:
+    ports: !override []
+  otel-collector:
+    ports: !override []
+  jaeger:
+    ports: !override []
+  grafana:
+    ports: !override []
+  prometheus:
+    ports: !override
+      - "127.0.0.1:9090:9090"
+  opensearch:
+    ports: !override []

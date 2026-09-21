@@ -1,0 +1,12 @@
+services:
+  api:
+    environment:
+      ROOK_PROMETHEUS_URL: http://prometheus:9090
+    networks:
+      - default
+      - demo
+
+networks:
+  demo:
+    external: true
+    name: opentelemetry-demo
