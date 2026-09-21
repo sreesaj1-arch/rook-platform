@@ -1,10 +1,10 @@
 # Rook backend foundation
 
-This slice provides a FastAPI app factory, typed configuration, and process liveness. It does not implement database integration, telemetry, a worker, or monitored-service health.
+This slice provides a FastAPI app factory, typed configuration, process liveness, and database readiness using SQLAlchemy and psycopg. It does not create product tables or incident records, or implement telemetry, a worker, or monitored-service health.
 
 ## Current verification status
 
-The user completed local verification and reported:
+Before the database foundation changes, the user completed local verification and reported:
 
 - Python 3.13.13.
 - `uv sync --locked --managed-python` succeeded using the generated `uv.lock`.
@@ -121,6 +121,87 @@ The user completed direct Docker runtime verification and reported:
 
 These results are from the user's local verification. The final documentation review did not repeat the Docker build or runtime tests.
 
+## Database foundation and Compose
+
+The root `docker-compose.yml` builds the existing backend and uses the official [PostgreSQL 17.6-bookworm image](https://hub.docker.com/layers/library/postgres/17.6-bookworm/images/sha256-45cd22f8d32e189d245403954882f88e7a8714301fda80dab6da90f1265b25a3). PostgreSQL has a project-scoped named volume and `pg_isready` health check. It publishes no host port. Only the API is published, at `127.0.0.1:8001`.
+
+Copy the root `.env.example` to `.env` for local development; its public example values are not production credentials. `.env` is ignored by Git and is outside the `apps/api` image context. The existing `.dockerignore` also excludes environment and secret files inside that context. Do not print resolved Compose configuration or connection settings into shared logs. Changing initialization credentials after a volume exists does not change credentials stored in PostgreSQL; retain the original values or change the database role deliberately. Do not delete the volume to fix this.
+
+Application lifespan creates one SQLAlchemy async engine per app and disposes it on shutdown. Connections are opened lazily, so an unavailable database does not prevent process liveness. For this probe-only foundation, `NullPool` closes connections after each check and avoids stale pooled connections after restart. Readiness executes only `SELECT 1`, with a three-second async deadline (configurable from 0.05 to 10 seconds), a two-second connection timeout, and a two-second server statement timeout. Cancellation releases the connection; scheduling and driver cleanup may add a small delay. No SQL or connection-error details are logged by the application or returned in responses.
+
+- `GET /health/live`: process-only HTTP 200, `{"status":"alive"}`, without touching the database.
+- `GET /health/ready`: HTTP 200, `{"status":"ready"}`, when the query succeeds; otherwise HTTP 503, `{"status":"unavailable"}`. This does not report monitored-service health.
+- Without `ROOK_DB_PASSWORD`, the standalone API starts normally but readiness returns 503.
+
+### Validation status
+
+The user completed local database milestone verification:
+
+- `uv lock` and sync succeeded with SQLAlchemy and psycopg dependencies in `uv.lock`.
+- Pytest passed all 19 tests, with two dependency deprecation warnings.
+- With Compose PostgreSQL running, readiness returned HTTP 200 and `{"status":"ready"}`.
+- After PostgreSQL stopped, readiness returned HTTP 503 and `{"status":"unavailable"}`, while liveness remained HTTP 200 and `{"status":"alive"}`.
+- After PostgreSQL restarted, readiness recovered to HTTP 200 and `{"status":"ready"}`.
+
+During final review, the assistant independently reran the Docker-independent suite using the project virtual environment on Python 3.13.13: `python -B -m pytest -p no:cacheprovider` passed all 19 tests with the same two warnings. These concern Starlette's use of `httpx` in its test client and the deprecated AnyIO `BlockingPortal` alias; they are dependency deprecations, not application failures. Docker checks were not repeated; the real database outage and recovery results above are from the user's local verification.
+
+### Repeat local validation in PowerShell
+
+From the repository root, install from the existing lockfile and run the Docker-independent tests:
+
+```powershell
+Push-Location apps/api
+try {
+    uv sync --locked --managed-python
+    if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed' }
+    .\.venv\Scripts\python.exe -m pytest
+    if ($LASTEXITCODE -ne 0) { throw 'Tests failed' }
+} finally { Pop-Location }
+```
+
+Then run the following in one session with Docker Desktop using Linux containers. It creates an isolated Compose project, checks actual readiness, stops only that project's database, checks 503 and independent liveness, then restarts the database and checks recovery. Leave any existing service on port 8001 alone; wait until the port is available before running. Cleanup retains the named volume and image.
+
+```powershell
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+$rookProject = 'rook-db-check-' + [guid]::NewGuid().ToString('N')
+
+function Assert-RookHealth([string]$Path, [int]$Code, [string]$Status) {
+    $result = @(curl.exe --silent --show-error --max-time 5 --write-out "`n%{http_code}" "http://127.0.0.1:8001/health/$Path")
+    if ($LASTEXITCODE -ne 0) { throw 'HTTP request failed' }
+    $body = ($result[0..($result.Count - 2)] -join "`n") | ConvertFrom-Json
+    if ([int]$result[-1] -ne $Code -or $body.status -ne $Status) { throw "Unexpected $Path response" }
+    "$Path HTTP $Code : $Status"
+}
+
+try {
+    docker compose -p $rookProject up --build --detach --wait --wait-timeout 120
+    if ($LASTEXITCODE -ne 0) { throw 'Compose startup failed' }
+    $ready = $false
+    for ($attempt = 0; $attempt -lt 30; $attempt++) {
+        try { Assert-RookHealth ready 200 ready; $ready = $true; break }
+        catch { Start-Sleep -Seconds 1 }
+    }
+    if (-not $ready) { throw 'Initial readiness failed' }
+    docker compose -p $rookProject stop postgres
+    if ($LASTEXITCODE -ne 0) { throw 'Database stop failed' }
+    Assert-RookHealth ready 503 unavailable
+    Assert-RookHealth live 200 alive
+    docker compose -p $rookProject start postgres
+    if ($LASTEXITCODE -ne 0) { throw 'Database restart failed' }
+    $ready = $false
+    for ($attempt = 0; $attempt -lt 30; $attempt++) {
+        try { Assert-RookHealth ready 200 ready; $ready = $true; break }
+        catch { Start-Sleep -Seconds 1 }
+    }
+    if (-not $ready) { throw 'Readiness recovery failed' }
+    docker compose -p $rookProject logs api
+} finally {
+    docker compose -p $rookProject down
+}
+```
+
+Do not add `--volumes` or run Docker prune. The `.env` values configure this local PostgreSQL instance and are passed to the API by Compose; the Python application does not load `.env` directly. For a host-based Windows API using psycopg async connections, use a selector event loop (for example, `asyncio.run(server.serve(), loop_factory=asyncio.SelectorEventLoop)`); the normal Compose runtime is Linux. Docker-independent unit tests stub database I/O and do not require this Windows driver setup.
+
 ## Continuous integration
 
 [Backend CI](../../.github/workflows/backend-ci.yml) runs on pull requests targeting `main`, pushes to `main`, and manual dispatch, without path filters. One Ubuntu job has a 10-minute timeout and read-only repository permissions; checkout does not persist credentials. Actions are pinned to full commit SHAs, and uv is pinned to 0.11.7.
@@ -129,7 +210,7 @@ CI reads Python from `.python-version`, then runs `uv sync --locked --managed-py
 
 ## Configuration and structure
 
-`ROOK_APP_NAME` sets the FastAPI title (default `Rook API`). Empty or whitespace-only values are rejected. This is the only application setting; `.env` files are not loaded automatically. Set it in PowerShell with `$env:ROOK_APP_NAME = 'Rook API'`.
+`ROOK_APP_NAME` sets the FastAPI title (default `Rook API`). Empty or whitespace-only values are rejected. Database settings are `ROOK_DB_HOST` (default `postgres`), `ROOK_DB_PORT` (5432), `ROOK_DB_NAME` and `ROOK_DB_USER` (both `rook_local`), `ROOK_DB_PASSWORD` (unset), and `ROOK_READINESS_TIMEOUT_SECONDS` (3). The password is stored as a secret value and omitted from settings representations. `.env` files are not loaded automatically.
 
 `create_app(settings: Settings | None = None)` accepts explicit configuration or reads environment settings when called. Configuration is immutable, and each app owns its own state. The shared `rook_backend.config` module does not import FastAPI and can later support another entry point without introducing a worker now.
 
