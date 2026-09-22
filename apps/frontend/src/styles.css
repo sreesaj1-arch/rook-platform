@@ -111,6 +111,11 @@ footer { display: flex; justify-content: space-between; gap: 20px; color: var(--
 .incident-pagination button { color: var(--text); background: var(--surface); border-color: var(--border); }
 .incident-evidence { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 28px; font-size: 12px; }
 .incident-detail:hover { transform: none; }
+.nearby-changes { border-top: 1px solid var(--border); margin-top: 24px; padding-top: 20px; }
+.nearby-changes h4 { font-size: 15px; line-height: 1.6; margin: 0; }
+.change-list { list-style: none; padding: 0; display: grid; gap: 16px; }
+.change-list > li { min-width: 0; border: 1px solid var(--border); border-radius: 8px; padding: 16px; background: var(--surface); }
+.change-list dl { border-top: 0; padding-top: 0; }
 button:disabled { cursor: not-allowed; opacity: .55; box-shadow: none; transform: none; }
 @media(max-width: 600px) { .incident-evidence { grid-template-columns: 1fr; }.incident-select { align-items: start; flex-direction: column; }.incidents-section .section-heading { align-items: start; flex-wrap: wrap; } }
 @keyframes levitate { 50% { transform: translateY(-7px); } }

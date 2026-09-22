@@ -1,17 +1,58 @@
 /** Persisted product state only; never infer incidents from metric cards. */
 export type IncidentState = 'open' | 'acknowledged' | 'resolved';
+export type NearbyChange = {
+  id: string; service_name: string; service_namespace: string; deployment_identifier: string;
+  environment: string; observed_timestamp: number; source: 'operator' | 'deployment_action';
+  kind: 'deployment' | 'configuration'; summary: string;
+};
+export type ChangeEvidence = {
+  nearby_changes: NearbyChange[];
+  nearby_changes_status: 'available' | 'unavailable' | 'missing_timestamp';
+  nearby_changes_truncated: boolean;
+  correlation_window_seconds: number | null;
+  correlation_environment: string | null;
+};
 export type Incident = {
   id: string; service_name: string; service_namespace: string; state: IncidentState;
   reason: string; value: number; unit: string; threshold: number | null;
   opened_at: number; evaluation_timestamp: number; oldest_latest_sample_timestamp: number;
   data_quality: 'measured';
-};
+} & ChangeEvidence;
 export const stateLabels = { open: 'Open', acknowledged: 'Acknowledged', resolved: 'Resolved' };
 export const canAcknowledge = (state: IncidentState) => state === 'open';
 export const canResolve = (state: IncidentState) => state === 'open' || state === 'acknowledged';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0;
 const timestamp = (v: unknown) => finite(v) && v <= 8.64e12;
+
+function parseChangeEvidence(row: Record<string, unknown>): ChangeEvidence {
+  const unavailable: ChangeEvidence = { nearby_changes: [], nearby_changes_status: 'unavailable',
+    nearby_changes_truncated: false, correlation_window_seconds: null, correlation_environment: null };
+  // Missing/malformed enrichment must not discard usable incident state or imply no changes.
+  if (!['available', 'unavailable', 'missing_timestamp'].includes(String(row.nearby_changes_status))
+    || !Array.isArray(row.nearby_changes) || row.nearby_changes.length > 20
+    || typeof row.nearby_changes_truncated !== 'boolean'
+    || !finite(row.correlation_window_seconds) || row.correlation_window_seconds === 0
+    || typeof row.correlation_environment !== 'string' || !row.correlation_environment) return unavailable;
+  const changes: NearbyChange[] = [];
+  for (const value of row.nearby_changes) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return unavailable;
+    const change = value as Record<string, unknown>;
+    if (typeof change.id !== 'string' || !uuid.test(change.id)
+      || !['service_name', 'service_namespace', 'deployment_identifier', 'environment', 'summary']
+        .every(key => typeof change[key] === 'string' && change[key])
+      || !timestamp(change.observed_timestamp)
+      || !['operator', 'deployment_action'].includes(String(change.source))
+      || !['deployment', 'configuration'].includes(String(change.kind))) return unavailable;
+    changes.push(change as NearbyChange);
+  }
+  if (new Set(changes.map(change => change.id)).size !== changes.length) return unavailable;
+  return { nearby_changes: row.nearby_changes_status === 'available' ? changes : [],
+    nearby_changes_status: row.nearby_changes_status as ChangeEvidence['nearby_changes_status'],
+    nearby_changes_truncated: row.nearby_changes_truncated,
+    correlation_window_seconds: row.correlation_window_seconds,
+    correlation_environment: row.correlation_environment };
+}
 
 export function parseIncident(value: unknown): Incident {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid incident response.');
@@ -22,7 +63,7 @@ export function parseIncident(value: unknown): Incident {
     || !finite(row.value) || !(row.threshold == null || finite(row.threshold))
     || ![row.opened_at, row.evaluation_timestamp, row.oldest_latest_sample_timestamp].every(timestamp)
     || row.data_quality !== 'measured') throw new Error('Invalid incident response.');
-  return { ...row, threshold: row.threshold ?? null } as Incident;
+  return { ...row, threshold: row.threshold ?? null, ...parseChangeEvidence(row) } as Incident;
 }
 
 export class IncidentApiError extends Error {

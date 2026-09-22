@@ -51,7 +51,29 @@ An empty register does not mean healthy services. No application fixtures, sampl
 incidents or fabricated metric values are used. New components share the existing
 theme variables, focus styles, responsive rules and reduced-motion behavior.
 
-### Browser verification
+### Nearby changes
+
+Incident details display **Nearby changes — temporal correlation only** from the
+existing incident list/detail responses. Each event shows its ID, service and
+namespace, version/deployment identifier, environment, source, observed UTC time,
+and the API's display metadata (kind and summary). The window is the server's
+configured number of seconds before and after incident opening, not a browser
+calculation. Temporal proximity does not establish an explanation for an incident.
+
+Available empty results, missing incident timestamps, unavailable/malformed
+enrichment, loading, and detail-request errors are distinct states. Missing
+enrichment never becomes an empty result. Truncated responses explicitly indicate
+that only the 20 most recent events are shown. Reload incidents or refresh metrics
+to reload selected details and changes. Acknowledgment and resolution are unchanged.
+
+Correlation milestone validation: 21 unit tests, TypeScript, production build,
+and the Edge browser check passed. Live metrics and an existing incident were read;
+that incident had no nearby changes. Populated/multiple events, loading and error
+states, and transitions used browser-test-only fixtures with no database writes.
+Dark desktop and light mobile screenshots were inspected; mobile overflow,
+keyboard focus, and reduced-motion checks passed. No dependencies were added.
+
+### Browser verification commands
 
 With Vite and the API already running, `npm run test:browser` uses the installed
 Windows Microsoft Edge in a separate headless test profile. It needs no additional
