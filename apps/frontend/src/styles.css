@@ -97,6 +97,22 @@ dd:last-child { margin-bottom: 0; }
 .legend p { font-size: 11px; line-height: 1.8; color: var(--muted); margin: 6px 0; }
 .legend strong { color: var(--text); font-weight: 600; }
 footer { display: flex; justify-content: space-between; gap: 20px; color: var(--muted); font-size: 9px; letter-spacing: .12em; margin-top: 26px; }
+.incident-context { color: var(--muted); font-size: 13px; line-height: 1.7; }
+.incident-list { list-style: none; padding: 0; display: grid; gap: 12px; }
+.incident-select { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 18px; background: var(--card); color: var(--text); border-color: var(--border); padding: 20px; text-align: left; box-shadow: var(--shadow); }
+.incident-select:hover, .incident-select[aria-expanded="true"] { background: var(--surface); border-color: var(--cyan); }
+.incident-select > span:first-child { min-width: 0; display: grid; gap: 9px; font-size: 12px; overflow-wrap: anywhere; }
+.incident-id { color: var(--muted); font: 11px Consolas, monospace; overflow-wrap: anywhere; }
+.incident-open { color: var(--amber); }
+.incident-acknowledged { color: var(--cyan); }
+.incident-resolved { color: var(--muted); }
+.incident-pagination, .incident-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 18px 0; }
+.incident-pagination span { font-size: 12px; color: var(--muted); }
+.incident-pagination button { color: var(--text); background: var(--surface); border-color: var(--border); }
+.incident-evidence { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 28px; font-size: 12px; }
+.incident-detail:hover { transform: none; }
+button:disabled { cursor: not-allowed; opacity: .55; box-shadow: none; transform: none; }
+@media(max-width: 600px) { .incident-evidence { grid-template-columns: 1fr; }.incident-select { align-items: start; flex-direction: column; }.incidents-section .section-heading { align-items: start; flex-wrap: wrap; } }
 @keyframes levitate { 50% { transform: translateY(-7px); } }
 @keyframes beacon { 50% { box-shadow: 0 0 0 3px #91eac819; } }
 @keyframes atmosphere { to { opacity: .4; transform: translateY(12px); } }
