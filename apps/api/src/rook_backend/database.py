@@ -11,7 +11,7 @@ from rook_backend.config import Settings
 
 
 class Database:
-    """No tables or sessions yet; each probe opens and closes one connection."""
+    """Shared engine; each readiness probe opens and closes one connection."""
 
     def __init__(self, settings: Settings) -> None:
         self.timeout = settings.readiness_timeout_seconds
