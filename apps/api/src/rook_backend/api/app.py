@@ -11,6 +11,7 @@ from rook_backend.database import Database
 from rook_backend.telemetry import Prometheus
 from rook_backend.api.metrics import router as metrics_router
 from rook_backend.api.incidents import router as incidents_router
+from rook_backend.api.changes import router as changes_router
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -41,4 +42,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(router)
     app.include_router(metrics_router)
     app.include_router(incidents_router)
+    app.include_router(changes_router)
     return app

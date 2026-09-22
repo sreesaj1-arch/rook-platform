@@ -81,6 +81,8 @@ class PostgresIncidentStore:
                            for index in indexes):
                     raise ValueError("Incident index mismatch; explicit migration required")
             await connection.run_sync(verify)
+            from rook_backend.changes import change_metadata
+            await connection.run_sync(change_metadata.create_all)
 
     async def list(self, limit: int = 100, offset: int = 0) -> list[Incident]:
         async with self.transaction() as connection:
