@@ -1,6 +1,6 @@
 # Rook backend foundation
 
-This slice provides a FastAPI app factory, typed configuration, process liveness, database readiness, optional read-only Prometheus service metrics, and explicit incident evaluation with PostgreSQL product state. It does not run a scheduled worker or infer service health from missing evidence.
+This slice provides a FastAPI app factory, typed configuration, process liveness, database readiness, optional read-only Prometheus service metrics, and explicit incident evaluation with PostgreSQL product state. The independently started [background worker](worker.md) schedules evaluations; the API never starts a worker or infers service health from missing evidence.
 
 ## First incident milestone
 
@@ -10,7 +10,7 @@ failure or an uninitialized table returns generic 503; malformed IDs return 422.
 Neither route triggers detection. Existing health and metrics behavior is unchanged.
 
 `rook_backend.incidents.evaluate_service(service, source, store, rules)` is an
-async entry point shared by tests and a future worker. It calls the same live
+async entry point shared by tests and the background worker. It calls the same live
 Prometheus adapter as the metrics endpoint, without an internal HTTP hop. Thresholds
 are explicit: error ratio uses 0-1 units and p95 uses seconds. A strict threshold
 breach in one fresh measured five-minute snapshot opens an incident immediately.
@@ -28,7 +28,7 @@ actions, backward transitions and actions on resolved incidents return HTTP 409
 `{"status":"invalid_transition"}` without changing stored state. Unknown IDs return
 404, malformed UUIDs 422, and database failures generic 503. Manual resolution is
 not proof of measured recovery; the stored values remain the original breach
-evidence. Automated recovery, transition timestamps/history and scheduling remain planned.
+evidence. Automated recovery and transition timestamps/history remain planned; scheduling is provided by the optional worker.
 
 PostgreSQL stores only incident product state: service/namespace, rule, threshold,
 latest breach value/unit, evaluation time, source evidence time and a PromQL
@@ -40,12 +40,12 @@ state; old evaluations or unchanged source timestamps do not overwrite newer evi
 The same ownership lock guards transitions and evaluation. Already resolved evidence
 cannot reopen an incident; a later fresh breach with advancing evaluation and source
 timestamps may create a new incident. The existing `evaluate_service` entry point
-can be called repeatedly or by a future worker without starting a scheduler.
+can be called directly or repeatedly by the independently started worker.
 A transaction-level PostgreSQL advisory lock serializes writers, and a partial
 unique index enforces one active incident per namespace/service/rule. Transactions
 have a ten-second overall deadline plus existing driver/server timeouts.
 
-Schema creation is an explicit `init-db` command, never API startup. It creates
+Schema creation uses the explicit `init-db` command or the worker's idempotent initialization, never API startup. It creates
 the first table/index if absent and can be repeated without deleting records.
 It does not migrate existing columns; a detected column mismatch fails and needs
 an explicit reviewed migration. Future schema changes require migrations; Alembic
@@ -70,8 +70,7 @@ resources. PostgreSQL in the existing Compose setup has no host port: run these
 Python module commands inside a Rook API container containing this code when using
 that private database (`docker compose exec api python -m rook_backend.incident_cli ...`).
 The API must use the existing telemetry override to reach Prometheus. The host
-commands do not make Compose-only names reachable from Windows. No deployment
-changes or continuous evaluation are included here. An empty incident list is valid;
+commands do not make Compose-only names reachable from Windows. The one-shot CLI does not schedule evaluations; use the [worker runbook](worker.md) for continuous evaluation. An empty incident list is valid;
 never insert demo incidents to populate it.
 
 Unit tests use test-only measurements and in-memory SQLite for repository SQL;
