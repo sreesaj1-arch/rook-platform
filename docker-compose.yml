@@ -30,5 +30,32 @@ services:
       retries: 10
       start_period: 10s
 
+  worker:
+    image: rook-backend:local
+    build:
+      context: ./apps/api
+    command: ["python", "-m", "rook_backend.worker"]
+    profiles: ["worker"]
+    stop_grace_period: 20s
+    environment:
+      ROOK_DB_HOST: postgres
+      ROOK_DB_PORT: "5432"
+      ROOK_DB_NAME: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
+      ROOK_DB_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      ROOK_DB_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      ROOK_WORKER_SERVICES: ${ROOK_WORKER_SERVICES:-["frontend"]}
+      ROOK_WORKER_INTERVAL_SECONDS: ${ROOK_WORKER_INTERVAL_SECONDS:-30}
+      ROOK_WORKER_ERROR_RATIO: ${ROOK_WORKER_ERROR_RATIO:-0.05}
+      ROOK_WORKER_P95_SECONDS: ${ROOK_WORKER_P95_SECONDS:-0.5}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-m", "rook_backend.worker", "--healthcheck"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
 volumes:
   postgres-data:
