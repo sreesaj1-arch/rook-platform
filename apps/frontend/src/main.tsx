@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import { displayValue, evidenceTime, loadSnapshot, metricNames, safeService } from './api';
 import type { Snapshot } from './api';
+import { Incidents } from './IncidentPanel';
 import './styles.css';
 
 type State = { kind: 'loading' } | { kind: 'error'; message: string } | { kind: 'loaded'; data: Snapshot | null };
@@ -101,6 +102,7 @@ function App() {
         </>}
       </section>
       <aside className="legend"><h2>Read the evidence</h2><p><strong>Measured</strong> means the API returned a measurement. <strong>Stale</strong> means a contributing source is too old. <strong>Insufficient data</strong> means the API cannot support a value.</p><p>The evidence timestamp is the oldest latest sample across contributing series. A missing error ratio stays empty; it is never replaced with zero. Ratios are shown as returned (0–1), not percentages.</p></aside>
+      <Incidents refreshToken={revision} />
       <footer>ROOK <span>Real telemetry. Explicit uncertainty.</span></footer>
     </main>
   </>;

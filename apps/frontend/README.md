@@ -1,6 +1,6 @@
 # Rook service dashboard
 
-Minimal React/TypeScript dashboard for the existing Rook metrics API. Requires
+React/TypeScript dashboard for the existing Rook metrics and incident APIs. Requires
 Node 24.15+ and npm. Run from the repository root in PowerShell:
 
 ```powershell
@@ -21,6 +21,57 @@ The dev server binds to loopback and fails if 5173 is occupied. Stop only this
 foreground dev server with Ctrl+C. The proxy is development-only; the build in
 `dist/` would require equivalent `/api` routing when hosted. No deployment is
 included.
+
+## Incident register
+
+The register loads `GET /incidents?limit=50&offset=...` through the existing `/api`
+proxy, showing all services, newest first, with previous/next pages. Selecting a
+record loads `GET /incidents/{id}`. Metrics refresh (manual or opt-in auto-refresh)
+also refreshes incidents and the selected detail; incident reload is available
+independently. Requests time out after 12 seconds, and obsolete reads are canceled.
+
+Details show ID, service/namespace, state, reason, observed value/unit, optional
+threshold and UTC evidence/opened/evaluation timestamps. **The backend has no
+state-update timestamp.** “State updated” therefore says “Not provided by API”;
+the latest breach evaluation is labeled separately and never presented as the time
+of acknowledgment or resolution. Evidence quality refers to the historical breach,
+not the current service state. No incident is inferred from metrics in the browser.
+
+Open incidents offer acknowledgment and resolution; acknowledged incidents offer
+resolution; resolved incidents disable both actions. Actions POST to the existing
+`/incidents/{id}/acknowledge` or `/resolve` route. Controls disable while a request
+is pending. The UI reloads authoritative state after an action, including failure;
+it never applies an optimistic state change. HTTP 409 has an explicit conflict
+message and asks for reload. A network failure can mean an action was applied but
+its response was lost, so it is never automatically retried. Resolution is an
+operator action, not proof of recovery.
+
+Loading, empty, request-error and unavailable responses are shown explicitly.
+An empty register does not mean healthy services. No application fixtures, sample
+incidents or fabricated metric values are used. New components share the existing
+theme variables, focus styles, responsive rules and reduced-motion behavior.
+
+### Browser verification
+
+With Vite and the API already running, `npm run test:browser` uses the installed
+Windows Microsoft Edge in a separate headless test profile. It needs no additional
+dependencies. Set `$env:ROOK_FRONTEND_URL = 'http://127.0.0.1:5174'` if using a
+different Vite port; `EDGE_PATH` can override the installed executable path. This
+is separate from `npm test`, which does not require a browser or backend.
+
+The browser check first reads the real metrics and incident APIs, then uses
+test-only response fixtures inside that browser to exercise incident details,
+all states/actions, HTTP 409 and unavailable/empty states without database writes.
+It also verifies manual refresh, theme switching, mobile overflow, reduced motion
+and keyboard focus. Screenshots and disposable Edge profiles remain under ignored
+`node_modules/.cache`; no test assets enter the application build.
+
+Incident milestone validation: 18 unit tests and the separate Edge browser check
+passed, along with TypeScript and production build checks. Live request rate and
+p95 remained measured, with null/insufficient error evidence. The live incident
+list was empty, so populated state/action browser checks used test-only fixtures;
+no live incident was created or changed. Dark desktop and light mobile views were
+visually inspected. No backend behavior, dependencies or deployment was changed.
 
 The page requests `frontend` on load. Submit a safe service name to load or refresh
 its snapshot. Requests have a 12-second deadline; changing service cancels the
