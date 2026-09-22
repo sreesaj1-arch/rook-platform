@@ -69,3 +69,38 @@ test('wrong incident identity in detail is rejected', async context => {
   context.mock.method(globalThis, 'fetch', async () => Response.json(fixture()));
   await assert.rejects(loadIncident('22222222-2222-4222-8222-222222222222', signal()), /identity/);
 });
+
+const change = (id = '22222222-2222-4222-8222-222222222222') => ({ id,
+  service_name: 'test-service', service_namespace: 'test-only', deployment_identifier: 'test-version',
+  environment: 'test', source: 'operator', kind: 'configuration', summary: 'Test-only observation',
+  observed_timestamp: 990 });
+const enriched = () => ({ ...fixture(), nearby_changes: [change()], nearby_changes_status: 'available',
+  nearby_changes_truncated: false, correlation_window_seconds: 300, correlation_environment: 'test' });
+
+test('detail retains one or multiple nearby changes and their metadata', async context => {
+  const row = { ...enriched(), nearby_changes: [change(), change('33333333-3333-4333-8333-333333333333')] };
+  context.mock.method(globalThis, 'fetch', async () => Response.json(row));
+  assert.deepEqual((await loadIncident(row.id, signal())).nearby_changes, row.nearby_changes);
+  assert.equal(parseIncident(enriched()).nearby_changes[0].summary, 'Test-only observation');
+});
+
+test('available empty changes are distinct from unavailable and missing timestamp', () => {
+  const empty = parseIncident({ ...enriched(), nearby_changes: [] });
+  assert.equal(empty.nearby_changes_status, 'available');
+  assert.deepEqual(empty.nearby_changes, []);
+  for (const status of ['unavailable', 'missing_timestamp']) {
+    const row = parseIncident({ ...enriched(), nearby_changes_status: status });
+    assert.equal(row.nearby_changes_status, status);
+    assert.deepEqual(row.nearby_changes, []);
+    assert.equal(row.state, 'open');
+  }
+});
+
+test('missing and malformed change enrichment stays unavailable without losing incident actions', () => {
+  assert.equal(parseIncident(fixture()).nearby_changes_status, 'unavailable');
+  for (const patch of [{ observed_timestamp: null }, { observed_timestamp: Infinity }, { id: 'bad' }, { summary: {} }]) {
+    const row = parseIncident({ ...enriched(), nearby_changes: [{ ...change(), ...patch }] });
+    assert.equal(row.nearby_changes_status, 'unavailable');
+    assert.equal(canAcknowledge(row.state), true);
+  }
+});

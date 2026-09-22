@@ -65,19 +65,28 @@ test('live dashboard, incident interactions, themes, keyboard and responsive lay
     assert.equal(live.metrics.request_rate.status, 'measured');
     assert.equal(live.metrics.p95_latency.status, 'measured');
     console.log('Real incident count:', await evaluate(`fetch('/api/incidents').then(r=>r.json()).then(rows=>rows.length)`));
+    if (await evaluate(`Boolean(document.querySelector('.incident-select'))`)) {
+      await evaluate(`document.querySelector('.incident-select').click()`);
+      await wait(`document.querySelector('.nearby-changes') && !document.querySelector('#incident-detail[aria-busy="true"]')`);
+      console.log('Real incident change evidence:', await evaluate(`document.querySelector('.nearby-changes').textContent`));
+    }
     await writeFile(join(directory, 'incidents-live-dark.png'), Buffer.from((await page('Page.captureScreenshot', { captureBeyondViewport: true })).data, 'base64'));
     await screenshotIncidents('incidents-live-register.png');
     // Following fixture responses exist only in this browser test. No DB writes.
     const fixture = { id: '11111111-1111-4111-8111-111111111111', service_name: 'browser-test-only',
       service_namespace: 'test-only', state: 'open', reason: 'Test-only threshold breach', value: 0.6,
       unit: 'seconds', threshold: 0.5, opened_at: 1000, evaluation_timestamp: 1100,
-      oldest_latest_sample_timestamp: 1090, data_quality: 'measured' };
+      oldest_latest_sample_timestamp: 1090, data_quality: 'measured',
+      nearby_changes: [], nearby_changes_status: 'available', nearby_changes_truncated: false,
+      correlation_window_seconds: 300, correlation_environment: 'test-only' };
     await evaluate(`(() => {
       const realFetch = window.fetch; window.testIncident = ${JSON.stringify(fixture)}; window.incidentMode = 'normal'; window.listCalls = 0;
       window.fetch = async (url, options) => {
         if (!String(url).startsWith('/api/incidents')) return realFetch(url, options);
         if (window.incidentMode === 'unavailable') return new Response('', {status:503});
         if (String(url).includes('?')) { window.listCalls++; return Response.json(window.incidentMode === 'empty' ? [] : [window.testIncident]); }
+        if (window.incidentMode === 'detail-error') return new Response('', {status:503});
+        if (window.incidentMode === 'loading') await new Promise(resolve => window.releaseDetail = resolve);
         if (options?.method === 'POST') {
           if (window.incidentMode === 'conflict') return new Response('', {status:409});
           window.testIncident.state = String(url).endsWith('/acknowledge') ? 'acknowledged' : 'resolved';
@@ -90,6 +99,26 @@ test('live dashboard, incident interactions, themes, keyboard and responsive lay
     await evaluate(`document.querySelector('.incident-select').click()`);
     await wait(`document.querySelector('.incident-detail .incident-open')`);
     assert.match(await evaluate(`document.querySelector('.incident-detail').textContent`), /State updated.*Not provided by API/);
+    assert.match(await evaluate(`document.querySelector('.nearby-changes').textContent`), /No nearby changes recorded/);
+    const changes = [1, 2].map(n => ({ id: `${n}${n}${n}${n}${n}${n}${n}${n}-2222-4222-8222-222222222222`,
+      service_name: 'browser-test-only', service_namespace: 'test-only', deployment_identifier: `test-version-${n}`,
+      environment: 'test-only', source: 'operator', kind: 'configuration', summary: 'Test-only observed configuration', observed_timestamp: 990 }));
+    await evaluate(`window.testIncident.nearby_changes=${JSON.stringify(changes)}; document.querySelector('.incidents-section .section-heading button').click()`);
+    await wait(`document.querySelectorAll('.change-list > li').length === 2`);
+    const changeText = await evaluate(`document.querySelector('.nearby-changes').textContent`);
+    assert.match(changeText, /Nearby changes \u2014 temporal correlation only/);
+    assert.doesNotMatch(changeText, /caused by|root cause|responsible deployment/i);
+    for (const value of ['test-version-1', 'test-version-2', 'operator', 'configuration', 'test-only']) assert.ok(changeText.includes(value));
+    await evaluate(`window.incidentMode='detail-error'; document.querySelector('.incidents-section .section-heading button').click()`);
+    await wait(`document.querySelector('.nearby-changes [role="alert"]')?.textContent.includes('Unable to load')`);
+    await evaluate(`window.incidentMode='loading'; document.querySelector('.incidents-section .section-heading button').click()`);
+    await wait(`window.releaseDetail && document.querySelector('.nearby-changes[aria-busy="true"]')`);
+    await evaluate(`window.incidentMode='normal'; window.releaseDetail()`);
+    await wait(`document.querySelectorAll('.change-list > li').length === 2`);
+    await evaluate(`window.testIncident.nearby_changes_status='unavailable'; document.querySelector('.incidents-section .section-heading button').click()`);
+    await wait(`document.querySelector('.nearby-changes [role="alert"]')?.textContent.includes('evidence unavailable')`);
+    await evaluate(`window.testIncident.nearby_changes_status='available'; document.querySelector('.incidents-section .section-heading button').click()`);
+    await wait(`document.querySelectorAll('.change-list > li').length === 2`);
     await screenshotIncidents('incidents-test-dark-detail.png');
     await evaluate(`document.querySelector('.incident-actions button').click()`);
     await wait(`document.querySelector('.incident-detail .incident-acknowledged') && !document.querySelector('#incident-detail[aria-busy="true"]')`);
@@ -114,6 +143,7 @@ test('live dashboard, incident interactions, themes, keyboard and responsive lay
     await wait(`document.documentElement.dataset.theme === 'light'`);
     await page('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: false });
     assert.equal(await evaluate('document.documentElement.scrollWidth <= window.innerWidth'), true);
+    assert.equal(await evaluate(`getComputedStyle(document.querySelector('.change-list .incident-evidence')).gridTemplateColumns.split(' ').length`), 1);
     await page('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
     assert.equal(await evaluate(`getComputedStyle(document.querySelector('.rook-scene .rook-mark')).animationName`), 'none');
     await evaluate(`document.querySelector('.theme-toggle').focus()`);

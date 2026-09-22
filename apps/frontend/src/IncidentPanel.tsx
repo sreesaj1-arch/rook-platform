@@ -6,6 +6,36 @@ import type { Incident } from './incidents';
 type Load<T> = { kind: 'loading' } | { kind: 'error'; message: string } | { kind: 'loaded'; data: T };
 const message = (error: unknown) => error instanceof Error ? error.message : 'Incident request failed.';
 
+function NearbyChanges({ detail }: { detail: Load<Incident> }) {
+  return <section className="nearby-changes" aria-labelledby="nearby-changes-heading" aria-busy={detail.kind === 'loading'}>
+    <h4 id="nearby-changes-heading">Nearby changes — temporal correlation only</h4>
+    {detail.kind === 'loading' && <p role="status">Loading nearby changes…</p>}
+    {detail.kind === 'error' && <p role="alert" className="notice error">Unable to load nearby changes. Reload incidents to retry.</p>}
+    {detail.kind === 'loaded' && <>
+      <p className="incident-context">Observed changes near the incident opening time. Proximity alone does not establish an explanation for the incident.</p>
+      {detail.data.nearby_changes_status === 'unavailable' && <p role="alert" className="notice error">Nearby change evidence unavailable. Reload incidents to retry.</p>}
+      {detail.data.nearby_changes_status === 'missing_timestamp' && <p role="status" className="notice">Nearby changes cannot be determined: the incident timestamp is missing.</p>}
+      {detail.data.nearby_changes_status === 'available' && <>
+        <p className="incident-context">Window: {detail.data.correlation_window_seconds} seconds before and after opening · Environment: {detail.data.correlation_environment}</p>
+        {detail.data.nearby_changes.length === 0 && <p role="status" className="notice">No nearby changes recorded within this window.</p>}
+        <ul className="change-list">{detail.data.nearby_changes.map(change => <li key={change.id}>
+          <dl className="incident-evidence">
+            <div><dt>Change event ID</dt><dd>{change.id}</dd></div>
+            <div><dt>Service / namespace</dt><dd>{change.service_name} / {change.service_namespace}</dd></div>
+            <div><dt>Version / deployment identifier</dt><dd>{change.deployment_identifier}</dd></div>
+            <div><dt>Environment</dt><dd>{change.environment}</dd></div>
+            <div><dt>Source</dt><dd>{change.source}</dd></div>
+            <div><dt>Observed timestamp (UTC)</dt><dd><time dateTime={evidenceTime(change.observed_timestamp)}>{evidenceTime(change.observed_timestamp)}</time></dd></div>
+            <div><dt>Change kind</dt><dd>{change.kind}</dd></div>
+            <div><dt>Summary</dt><dd>{change.summary}</dd></div>
+          </dl>
+        </li>)}</ul>
+        {detail.data.nearby_changes_truncated && <p role="status" className="notice">Showing the 20 most recent nearby changes. Additional events are not included in this response.</p>}
+      </>}
+    </>}
+  </section>;
+}
+
 export function IncidentEvidence({ incident }: { incident: Incident }) {
   return <dl className="incident-evidence">
     <div><dt>Incident ID</dt><dd>{incident.id}</dd></div>
@@ -102,6 +132,7 @@ export function Incidents({ refreshToken }: { refreshToken: number }) {
           </div>
           {busy && <p role="status">Applying action…</p>}
         </>}
+        <NearbyChanges detail={detail} />
       </article>}
     </div>
   </section>;
