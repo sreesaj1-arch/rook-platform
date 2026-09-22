@@ -4,6 +4,56 @@ This slice provides a FastAPI app factory, typed configuration, process liveness
 
 ## First incident milestone
 
+### Observed changes and temporal correlation
+
+`POST /changes` records an observation from an explicit operator or deployment
+action; it does not execute a deployment or independently verify the submitted
+observation. Submit only a change actually observed in running software. The JSON
+contract requires `id` (UUID), `service_name`, `service_namespace`,
+`deployment_identifier` (version or deployment ID), `environment`,
+`observed_timestamp` (Unix seconds), `source` (`operator` or `deployment_action`),
+`kind` (`deployment` or `configuration`) and `summary`. Summary is bounded display
+metadata, not a raw configuration dump. Never submit secrets, raw telemetry or
+invented events. Unknown fields and missing/non-finite/future timestamps are rejected.
+
+The service namespace must match `ROOK_PROMETHEUS_NAMESPACE`; environment must
+match `ROOK_CHANGE_ENVIRONMENT` (default `local`). A repeated UUID with identical
+content returns the same event (201); different content returns 409. Database
+unavailability returns generic 503. This remains the existing local-only,
+unauthenticated API; no external integration is installed.
+
+`GET /services/{service_name}/changes` returns that service's observations in the
+configured namespace/environment, newest first. `lookback_seconds` defaults to
+3600 and is bounded to 1-86400; `limit` defaults to and cannot exceed 100.
+
+Incident list, detail and successful transition responses include `nearby_changes`.
+Matching uses the same service, namespace and configured environment, within
+`opened_at ± ROOK_CHANGE_CORRELATION_WINDOW_SECONDS` (default 300, bounded 1-3600).
+The inclusive window is anchored to opening time, not the latest evaluation or
+operator transition, and includes both earlier and later observations. Response
+metadata states **temporal proximity, not proof of causation**. Nothing changes
+incident state, detection thresholds or recovery behavior. A nearby change is not
+a root-cause finding. An empty list does not prove no changes occurred.
+
+At most 20 nearby events per incident are returned, with an explicit truncation
+flag. Enrichment has a three-second page deadline. `nearby_changes_status` reports
+`available`, `unavailable`, or `missing_timestamp`; unavailable change storage does
+not hide an otherwise retrievable incident. Missing event timestamps cannot be
+recorded or matched. These are query-time associations, not persisted causal links.
+
+This milestone assumes one environment per Rook database, as existing incidents
+have no environment column. Keep `ROOK_CHANGE_ENVIRONMENT` stable for that database;
+do not relabel an existing database to another environment. Separate databases
+are required for separate environments until incident identities are extended.
+Configure these variables on the API process; arbitrary host variables are not
+automatically forwarded into existing Compose containers.
+
+The existing `python -m rook_backend.incident_cli init-db` command (or the worker's
+idempotent initialization) creates the new `rook_change_events` table/index without
+altering incident records or storing raw telemetry. Initialize before using the new
+recording API. The frontend is unchanged. Tests use explicit fixtures only; no live
+deployment events were invented or recorded during implementation.
+
 `GET /incidents` lists persisted incidents (newest first, `limit` 1-100 and
 `offset` 0-100000). `GET /incidents/{UUID}` returns one incident or 404. Database
 failure or an uninitialized table returns generic 503; malformed IDs return 422.

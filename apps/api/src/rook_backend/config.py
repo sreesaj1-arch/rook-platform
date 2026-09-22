@@ -23,3 +23,5 @@ class Settings(BaseSettings):
     prometheus_timeout_seconds: float = Field(default=2.0, ge=0.05, le=10)
     prometheus_deadline_seconds: float = Field(default=8.0, ge=0.05, le=30)
     prometheus_freshness_seconds: float = Field(default=120.0, ge=1, le=300)
+    change_environment: str = Field(default='local', pattern=r'^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$')
+    change_correlation_window_seconds: int = Field(default=300, ge=1, le=3600)
