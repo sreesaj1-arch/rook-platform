@@ -1,6 +1,134 @@
 # Rook backend foundation
 
-This slice provides a FastAPI app factory, typed configuration, process liveness, database readiness, and optional read-only Prometheus service metrics. It does not create product tables or incidents, run a worker, or infer monitored-service health.
+This slice provides a FastAPI app factory, typed configuration, process liveness, database readiness, optional read-only Prometheus service metrics, and explicit incident evaluation with PostgreSQL product state. It does not run a scheduled worker or infer service health from missing evidence.
+
+## First incident milestone
+
+`GET /incidents` lists persisted incidents (newest first, `limit` 1-100 and
+`offset` 0-100000). `GET /incidents/{UUID}` returns one incident or 404. Database
+failure or an uninitialized table returns generic 503; malformed IDs return 422.
+Neither route triggers detection. Existing health and metrics behavior is unchanged.
+
+`rook_backend.incidents.evaluate_service(service, source, store, rules)` is an
+async entry point shared by tests and a future worker. It calls the same live
+Prometheus adapter as the metrics endpoint, without an internal HTTP hop. Thresholds
+are explicit: error ratio uses 0-1 units and p95 uses seconds. A strict threshold
+breach in one fresh measured five-minute snapshot opens an incident immediately.
+This initial detector does not yet implement the accepted architecture's sustained
+violation/recovery durations or minimum-volume rules; it is not full V1 detection.
+
+Missing 5xx series remain null/insufficient data. Stale, invalid, insufficient or
+unavailable measurements cannot open, update or resolve an incident. Rules operate
+independently, so measured latency can breach while error evidence is missing.
+No automatic resolution occurs, including after a measured below-threshold result.
+Explicit operator transitions are available through `POST /incidents/{UUID}/acknowledge`
+(open to acknowledged) and `POST /incidents/{UUID}/resolve` (open or acknowledged
+to resolved). They need no request body and return the updated incident. Repeated
+actions, backward transitions and actions on resolved incidents return HTTP 409
+`{"status":"invalid_transition"}` without changing stored state. Unknown IDs return
+404, malformed UUIDs 422, and database failures generic 503. Manual resolution is
+not proof of measured recovery; the stored values remain the original breach
+evidence. Automated recovery, transition timestamps/history and scheduling remain planned.
+
+PostgreSQL stores only incident product state: service/namespace, rule, threshold,
+latest breach value/unit, evaluation time, source evidence time and a PromQL
+reference. No raw counters, histograms, logs or traces are copied. `data_quality`
+describes the stored breach evidence at evaluation time, not current service health
+or current freshness. Referenced evidence may expire from Prometheus. Repeated
+breaches update one active incident, preserving its ID, opened time and acknowledged
+state; old evaluations or unchanged source timestamps do not overwrite newer evidence.
+The same ownership lock guards transitions and evaluation. Already resolved evidence
+cannot reopen an incident; a later fresh breach with advancing evaluation and source
+timestamps may create a new incident. The existing `evaluate_service` entry point
+can be called repeatedly or by a future worker without starting a scheduler.
+A transaction-level PostgreSQL advisory lock serializes writers, and a partial
+unique index enforces one active incident per namespace/service/rule. Transactions
+have a ten-second overall deadline plus existing driver/server timeouts.
+
+Schema creation is an explicit `init-db` command, never API startup. It creates
+the first table/index if absent and can be repeated without deleting records.
+It does not migrate existing columns; a detected column mismatch fails and needs
+an explicit reviewed migration. Future schema changes require migrations; Alembic
+is not needed for this single initial schema. Do not delete an existing volume.
+
+From `apps/api` in PowerShell, with the existing `ROOK_DB_*` and
+`ROOK_PROMETHEUS_*` environment configured for reachable services:
+
+```powershell
+uv sync --locked --managed-python
+if ($LASTEXITCODE -ne 0) { throw 'Locked sync failed' }
+.\.venv\Scripts\python.exe -m rook_backend.incident_cli init-db
+if ($LASTEXITCODE -ne 0) { throw 'Schema initialization failed' }
+# Example operator-selected thresholds, not observed telemetry values.
+.\.venv\Scripts\python.exe -m rook_backend.incident_cli evaluate --service frontend --error-ratio 0.05 --p95-seconds 0.5
+if ($LASTEXITCODE -ne 0) { throw 'Evaluation unavailable or configuration invalid' }
+Invoke-RestMethod http://127.0.0.1:8001/incidents
+```
+
+The CLI uses a Windows selector event loop and closes its database and HTTP
+resources. PostgreSQL in the existing Compose setup has no host port: run these
+Python module commands inside a Rook API container containing this code when using
+that private database (`docker compose exec api python -m rook_backend.incident_cli ...`).
+The API must use the existing telemetry override to reach Prometheus. The host
+commands do not make Compose-only names reachable from Windows. No deployment
+changes or continuous evaluation are included here. An empty incident list is valid;
+never insert demo incidents to populate it.
+
+Unit tests use test-only measurements and in-memory SQLite for repository SQL;
+PostgreSQL locking is not established by SQLite tests. Live PostgreSQL persistence
+and detection from an actual workload breach still require runtime verification.
+
+Local lifecycle validation: Python 3.13.13 ran 75 passing backend tests with one
+opt-in real PostgreSQL integration test skipped and
+two existing Starlette/httpx and AnyIO deprecation warnings (not application
+failures). Pytest's cache plugin was disabled because the existing cache directory
+was not writable. Locked sync resolved 30 packages but failed fetching Hatchling
+from `https://pypi.org/simple/hatchling/`: connection refused, Windows error 10061.
+Dependencies and `uv.lock` are unchanged. Rerun the locked sync command above in
+the user terminal before runtime verification; no global settings change is needed.
+
+### Real PostgreSQL lifecycle verification
+
+The assistant's Docker check failed with `permission denied while trying to connect
+to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine`. Live PostgreSQL
+verification has **not** passed in this session. The opt-in integration test uses
+explicit test fixtures in a UUID namespace, checks committed state through independent
+connections, concurrent evaluation deduplication, valid/invalid transitions and the
+manual recovery policy, then deletes only its own fixture rows. It creates the
+incident table if absent; no schema/volume is dropped and no Demo state is changed.
+
+From the repository root, run this sequence against the existing Rook API container.
+It copies current Python source to a unique temporary directory and runs the check
+in a separate process using that container's existing private PostgreSQL configuration.
+It does not rebuild, restart or replace the running API, and therefore does not verify
+that the running HTTP server has loaded the new routes. The latter requires your
+normal later deployment step. No pytest installation in the runtime image is needed.
+
+```powershell
+$apiContainer = 'rook-local-api-1'
+$checkDir = '/tmp/rook-incident-check-' + [guid]::NewGuid().ToString('N')
+$labels = docker inspect --format '{{json .Config.Labels}}' $apiContainer
+if ($LASTEXITCODE -ne 0) { throw 'Existing Rook API container unavailable; stop' }
+if (($labels | ConvertFrom-Json).'com.docker.compose.service' -ne 'api') { throw 'Not the Rook API service; stop' }
+docker exec $apiContainer python -c 'import os,sys; os.mkdir(sys.argv[1])' $checkDir
+if ($LASTEXITCODE -ne 0) { throw 'Cannot create verification directory; stop' }
+try {
+    docker cp apps/api/src/rook_backend "${apiContainer}:${checkDir}/rook_backend"
+    if ($LASTEXITCODE -ne 0) { throw 'Source copy failed' }
+    docker cp apps/api/tests/test_incidents_postgres.py "${apiContainer}:${checkDir}/check.py"
+    if ($LASTEXITCODE -ne 0) { throw 'Test copy failed' }
+    docker exec -e "PYTHONPATH=$checkDir" $apiContainer python "$checkDir/check.py"
+    if ($LASTEXITCODE -ne 0) { throw 'PostgreSQL lifecycle verification failed' }
+} finally {
+    docker exec $apiContainer python -c 'import pathlib,shutil,sys; p=pathlib.Path(sys.argv[1]).resolve(); assert str(p).startswith(sys.argv[2]) and len(p.name) == 52; shutil.rmtree(p)' $checkDir '/tmp/rook-incident-check-'
+}
+```
+
+For pytest with an already reachable PostgreSQL configuration, set
+`$env:ROOK_TEST_POSTGRES = '1'` and run
+`.\.venv\Scripts\python.exe -m pytest tests/test_incidents_postgres.py` from
+`apps/api`, then remove that opt-in environment variable. Normal CI skips this
+external-service check; test fixtures are never imported by application code.
 
 For the live telemetry configuration, evidence semantics, current validation limits,
 and exact PowerShell build/start/comparison commands, see [live telemetry](live-telemetry.md).
