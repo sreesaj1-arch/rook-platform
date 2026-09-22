@@ -92,7 +92,33 @@ and stop with Ctrl+C. Compose-only database names are not reachable from Windows
 
 ## Controlled real-telemetry failure and recovery
 
-This exercise is documented, **not yet executed or validated for this worker**.
+The user completed this exercise successfully in the local running environment.
+The results below are from the user's verification; this documentation update
+did not rerun the exercise.
+
+- `product-catalog` was stopped temporarily and automatically restarted by the
+  exercise's cleanup step.
+- Real requests produced measured `frontend` error evidence, and the worker
+  created a persisted frontend error-ratio incident in PostgreSQL.
+- Repeated evaluations retained the active incident rather than creating duplicates.
+- After restart, the service recovered with HTTP 200. Metrics eventually returned
+  to measured `error_ratio=0.0`; this was observed telemetry, not a substitute for
+  missing error series.
+- The operator explicitly resolved the incidents. No fabricated telemetry or
+  seeded incident records were used.
+
+Two incident records occurred because the first was resolved before the rolling
+five-minute error window fully cleared. Although current requests were recovering,
+the window still included earlier errors. A later evaluation with advancing source
+evidence still breached the threshold and opened a second incident, since the first
+was no longer active. This was not duplicate creation while an incident remained
+active, replay of the same evidence, or proof of a second independent outage.
+Explicit resolution does not clear Prometheus history or suppress subsequent
+breaches. The operator resolved the records explicitly; automatic recovery remains
+planned. For repeat runs, inspect the rolling-window evidence before resolution.
+
+### Repeat the exercise
+
 Use only the local Demo 3.1.0. Its `GET /api/products` handler calls the
 `product-catalog` dependency. Temporarily stopping that container should cause
 real request failures; confirm actual HTTP results and exported metrics rather
@@ -151,6 +177,8 @@ Invoke-RestMethod -Method Post "http://127.0.0.1:8001/incidents/$incidentId/reso
 ```
 
 Do not delete volumes, prune Docker, stop unrelated containers, or leave the catalog
-stopped. Worker container startup and this failure demonstration remain pending
-runtime verification; earlier local validation passed 90 tests with one PostgreSQL
-integration test skipped and two dependency deprecation warnings.
+stopped. The user-verified exercise above establishes real worker detection,
+persistence, active-incident deduplication and observed recovery for this run.
+Earlier local validation passed 90 tests with one PostgreSQL integration test
+skipped and two dependency deprecation warnings; those tests were not rerun for
+this documentation update.
