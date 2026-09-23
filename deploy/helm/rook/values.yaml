@@ -1,0 +1,55 @@
+# Local images must be loaded into the cluster or replaced with registry images.
+api:
+  image: rook-backend:local
+  imagePullPolicy: IfNotPresent
+  replicas: 1
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: "1", memory: 512Mi}
+worker:
+  image: rook-backend:local
+  imagePullPolicy: IfNotPresent
+  replicas: 1
+  services: [frontend]
+  intervalSeconds: 30
+  errorRatio: 0.05
+  p95Seconds: 0.5
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: "1", memory: 512Mi}
+frontend:
+  image: rook-frontend:local
+  imagePullPolicy: IfNotPresent
+  replicas: 1
+  resources:
+    requests: {cpu: 25m, memory: 32Mi}
+    limits: {cpu: 250m, memory: 128Mi}
+postgres:
+  image: postgres:17.6-bookworm
+  imagePullPolicy: IfNotPresent
+  database: rook_local
+  username: rook_local
+  # Existing namespace-local Secret is the default; never commit a real password.
+  secret:
+    create: false
+    name: rook-db
+    passwordKey: password
+    password: "" # Required only with create=true; use an untracked values file.
+  storage:
+    size: 2Gi
+    storageClass: "" # Empty uses the cluster's default provisioner.
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: "1", memory: 512Mi}
+telemetry:
+  # Empty disables the default source. Supply a URL reachable FROM pods.
+  prometheusUrl: ""
+  namespace: opentelemetry-demo
+  sources: {} # service: {profile: local-http, url: "http://reachable-prometheus:9090"}
+  timeoutSeconds: 2
+  deadlineSeconds: 8
+  freshnessSeconds: 120
+databaseReadinessTimeoutSeconds: 3
+changes:
+  environment: local
+  correlationWindowSeconds: 300

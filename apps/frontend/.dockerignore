@@ -1,0 +1,11 @@
+*
+!Dockerfile
+!nginx.conf.template
+!package.json
+!package-lock.json
+!index.html
+!tsconfig.json
+!vite.config.ts
+!src/
+!src/**
+src/*.test.ts

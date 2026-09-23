@@ -1,0 +1,7 @@
+apiVersion: v2
+name: rook
+description: Local Rook API, incident worker, PostgreSQL and dashboard
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.25.0-0"
