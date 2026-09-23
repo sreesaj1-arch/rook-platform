@@ -1,0 +1,33 @@
+# Append after docker-compose.yml and optionally docker-compose.telemetry.yml.
+services:
+  api:
+    environment:
+      ROOK_TELEMETRY_SOURCES: '{"portable-http":{"profile":"local-http","url":"http://portable-prometheus:9090"}}'
+  worker:
+    environment:
+      ROOK_TELEMETRY_SOURCES: '{"portable-http":{"profile":"local-http","url":"http://portable-prometheus:9090"}}'
+      ROOK_WORKER_SERVICES: '["frontend","portable-http"]'
+  portable-http:
+    build:
+      context: ./deploy/local/portable-http
+    image: rook-portable-http:local
+    environment:
+      WORKLOAD_NAMESPACE: opentelemetry-demo
+    ports:
+      - "127.0.0.1:8082:8080"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+  portable-prometheus:
+    image: prom/prometheus:v3.2.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=2h
+    volumes:
+      - ./deploy/local/portable-http/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - portable-prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:9092:9090"
+volumes:
+  portable-prometheus-data:

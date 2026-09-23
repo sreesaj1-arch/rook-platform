@@ -5,16 +5,14 @@ import json
 import math
 import re
 import time
-from typing import Literal
+from typing import Literal, Protocol
 
 import httpx
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from rook_backend.config import Settings
 
-COUNTER = "http_server_request_duration_seconds_count"
-BUCKET = "http_server_request_duration_seconds_bucket"
-SERVICE = r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}"
+from rook_backend.telemetry_profiles import PROFILES, SERVICE, queries, validate_identity
 
 
 class Unavailable(Exception):
@@ -36,23 +34,14 @@ class ServiceMetrics(BaseModel):
     window_seconds: int = 300
     freshness_threshold_seconds: float
     metrics: dict[str, Measurement]
+    # Internal provenance, not raw telemetry or an HTTP-configurable query.
+    evidence_queries: dict[str, str] = Field(default_factory=dict, exclude=True)
 
 
-def queries(service: str, namespace: str) -> dict[str, str]:
-    if not re.fullmatch(SERVICE, service) or not re.fullmatch(SERVICE, namespace):
-        raise ValueError("Invalid service identity")
-    labels = f"service_name={json.dumps(service)},service_namespace={json.dumps(namespace)}"
-    count = f"{COUNTER}{{{labels}}}"
-    bucket = f"{BUCKET}{{{labels}}}"
-    errors = f'{COUNTER}{{{labels},http_response_status_code=~"5.."}}'
-    rate = f"sum(rate({count}[5m]))"
-    return {
-        "request_rate": rate,
-        "p95_latency": f"histogram_quantile(0.95, sum by (le)(rate({bucket}[5m])))",
-        "error_ratio": f"sum(rate({errors}[5m])) / {rate}",
-        "counter_sources": f"{count}[5m]",
-        "bucket_sources": f"{bucket}[5m]",
-    }
+class TelemetryAdapter(Protocol):
+    """Normalize observations and own cleanup, independent of source instruments."""
+    async def metrics(self, service: str) -> ServiceMetrics: ...
+    async def close(self) -> None: ...
 
 
 def parse_result(payload: object, kind: str) -> list[dict]:
@@ -115,15 +104,15 @@ class Prometheus:
             timeout=settings.prometheus_timeout_seconds,
             limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
             trust_env=False, follow_redirects=False,
-        ) if settings.prometheus_url else None
+        ) if settings.prometheus_url or settings.telemetry_sources else None
 
     async def close(self) -> None:
         if self.client is not None:
             await self.client.aclose()
 
-    async def query(self, query: str, timestamp: float, kind: str) -> list[dict]:
+    async def query(self, query: str, timestamp: float, kind: str, base_url: str) -> list[dict]:
         assert self.client is not None
-        url = str(self.settings.prometheus_url).rstrip("/") + "/api/v1/query"
+        url = base_url.rstrip("/") + "/api/v1/query"
         async with self.client.stream("GET", url, params={
             "query": query, "time": str(timestamp),
             # Prometheus duration units require integer quantities, not "2.0s".
@@ -138,22 +127,26 @@ class Prometheus:
         return parse_result(json.loads(body), kind)
 
     async def metrics(self, service: str) -> ServiceMetrics:
-        if self.client is None:
+        validate_identity(service, self.settings.prometheus_namespace)
+        source = self.settings.telemetry_sources.get(service)
+        url = source.url if source else self.settings.prometheus_url
+        profile = PROFILES[source.profile if source else 'otel-demo']
+        if self.client is None or url is None:
             raise Unavailable()
         timestamp = time.time()
-        plan = queries(service, self.settings.prometheus_namespace)
+        plan = profile.queries(service, self.settings.prometheus_namespace)
         try:
             async with asyncio.timeout(self.settings.prometheus_deadline_seconds):
                 results = {}
                 for name, query in plan.items():
-                    results[name] = await self.query(query, timestamp, "matrix" if name.endswith("sources") else "vector")
+                    results[name] = await self.query(query, timestamp, "matrix" if name.endswith("sources") else "vector", str(url))
                 values = {name: float(results[name][0]["value"][1]) if results[name] else None
                           for name in ("request_rate", "p95_latency", "error_ratio")}
                 counters = results["counter_sources"]
                 buckets = results["bucket_sources"]
                 # The ratio depends on every denominator series AND the error subset.
                 error_sources = [row for row in counters if re.fullmatch(
-                    r"5\d\d", row["metric"].get("http_response_status_code", ""))]
+                    r"5\d\d", row["metric"].get(profile.status_label, ""))]
                 sources = {"request_rate": counters, "p95_latency": buckets,
                            "error_ratio": counters if error_sources else []}
                 units = {"request_rate": "requests/second", "p95_latency": "seconds", "error_ratio": "ratio"}
@@ -163,6 +156,6 @@ class Prometheus:
                 return ServiceMetrics(service_name=service, service_namespace=self.settings.prometheus_namespace,
                                       evaluation_timestamp=timestamp,
                                       freshness_threshold_seconds=self.settings.prometheus_freshness_seconds,
-                                      metrics=measured)
+                                      metrics=measured, evidence_queries={name: plan[name] for name in values})
         except (httpx.HTTPError, TimeoutError, ValueError, TypeError, KeyError):
             raise Unavailable() from None

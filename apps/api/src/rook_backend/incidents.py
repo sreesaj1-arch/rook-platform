@@ -6,7 +6,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from rook_backend.telemetry import Measurement, ServiceMetrics, Unavailable, queries
+from rook_backend.telemetry import Measurement, ServiceMetrics, TelemetryAdapter, Unavailable
+from rook_backend.telemetry_profiles import validate_identity
 
 IncidentState = Literal["open", "acknowledged", "resolved"]
 MetricName = Literal["error_ratio", "p95_latency"]
@@ -55,10 +56,6 @@ class Evaluation(BaseModel):
     incidents: list[Incident] = Field(default_factory=list)
 
 
-class MetricsSource(Protocol):
-    async def metrics(self, service: str) -> ServiceMetrics: ...
-
-
 class IncidentStore(Protocol):
     async def record(self, snapshot: ServiceMetrics, rules: Rules) -> list[Incident]: ...
 
@@ -84,7 +81,7 @@ def breaches(snapshot: ServiceMetrics, rules: Rules) -> list[tuple[MetricName, M
     return result
 
 
-async def evaluate_service(service: str, source: MetricsSource, store: IncidentStore,
+async def evaluate_service(service: str, source: TelemetryAdapter, store: IncidentStore,
                            rules: Rules) -> Evaluation:
     """One evaluation for a future worker. Unavailable evidence never mutates state."""
     if rules.error_ratio is None and rules.p95_latency is None:
@@ -95,6 +92,6 @@ async def evaluate_service(service: str, source: MetricsSource, store: IncidentS
         return Evaluation(status="unavailable")
     if snapshot.service_name != service:
         raise ValueError("Unexpected service identity")
-    queries(service, snapshot.service_namespace)  # Validate identity before persistence.
+    validate_identity(service, snapshot.service_namespace)
     incidents = await store.record(snapshot, rules)
     return Evaluation(status="evaluated", measurements=snapshot.metrics, incidents=incidents)
