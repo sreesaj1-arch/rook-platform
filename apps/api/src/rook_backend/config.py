@@ -2,6 +2,9 @@
 
 from pydantic import Field, SecretStr, HttpUrl
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import Annotated
+
+from rook_backend.telemetry_profiles import SERVICE, SourceConfig
 
 
 class Settings(BaseSettings):
@@ -19,6 +22,8 @@ class Settings(BaseSettings):
     db_password: SecretStr | None = Field(default=None, repr=False)
     readiness_timeout_seconds: float = Field(default=3.0, ge=0.05, le=10.0)
     prometheus_url: HttpUrl | None = Field(default=None, repr=False)
+    telemetry_sources: dict[Annotated[str, Field(pattern=f'^{SERVICE}$')], SourceConfig] = Field(
+        default_factory=dict, max_length=20, repr=False)
     prometheus_namespace: str = Field(default="opentelemetry-demo", pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$")
     prometheus_timeout_seconds: float = Field(default=2.0, ge=0.05, le=10)
     prometheus_deadline_seconds: float = Field(default=8.0, ge=0.05, le=30)

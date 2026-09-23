@@ -2,6 +2,16 @@
 
 This slice provides a FastAPI app factory, typed configuration, process liveness, database readiness, optional read-only Prometheus service metrics, and explicit incident evaluation with PostgreSQL product state. The independently started [background worker](worker.md) schedules evaluations; the API never starts a worker or infers service health from missing evidence.
 
+## Source portability
+
+The optional [second HTTP workload and source runbook](../../deploy/local/portable-http/README.md)
+adds real request instrumentation alongside the unchanged OpenTelemetry Demo profile.
+Set `ROOK_TELEMETRY_SOURCES` to a JSON map of service names to reviewed profiles and
+Prometheus URLs; the default remains `ROOK_PROMETHEUS_URL` with `otel-demo` queries.
+API and worker use the same normalized adapter; no frontend or database schema
+change is required. See the runbook for startup, real traffic, controlled failure,
+recovery, evidence limitations, and verification commands.
+
 ## First incident milestone
 
 ### Observed changes and temporal correlation

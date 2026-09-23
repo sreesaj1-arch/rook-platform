@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from rook_backend.database import Database
 from rook_backend.incidents import Incident, IncidentState, Rules, breaches, validate_transition
-from rook_backend.telemetry import ServiceMetrics, Unavailable, queries
+from rook_backend.telemetry import ServiceMetrics, Unavailable
 
 metadata = MetaData()
 incidents = Table(
@@ -100,7 +100,7 @@ class PostgresIncidentStore:
         candidates = breaches(snapshot, rules)
         if not candidates:
             return []
-        plan = queries(snapshot.service_name, snapshot.service_namespace)
+        plan = snapshot.evidence_queries
         result = []
         async with self.transaction() as connection:
             # One bounded transaction serializes this milestone's writers. The
@@ -133,7 +133,7 @@ class PostgresIncidentStore:
                     evaluation_timestamp=snapshot.evaluation_timestamp,
                     oldest_latest_sample_timestamp=metric.oldest_latest_sample_timestamp,
                     value=metric.value, unit=metric.unit, threshold=threshold,
-                    reason=f"{name} exceeded configured threshold", evidence_query=plan[name],
+                    reason=f"{name} exceeded configured threshold", evidence_query=plan.get(name, ''),
                 )
                 values = incident.model_dump(mode="json")
                 if existing:

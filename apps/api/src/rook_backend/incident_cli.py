@@ -10,7 +10,8 @@ from rook_backend.config import Settings
 from rook_backend.database import Database
 from rook_backend.incident_store import PostgresIncidentStore
 from rook_backend.incidents import Rules, evaluate_service
-from rook_backend.telemetry import Prometheus, Unavailable, queries
+from rook_backend.telemetry import Prometheus, Unavailable
+from rook_backend.telemetry_profiles import validate_identity
 
 
 async def run(command: str, service: str, rules: Rules, settings: Settings) -> int:
@@ -21,7 +22,7 @@ async def run(command: str, service: str, rules: Rules, settings: Settings) -> i
             await store.initialize()
             print('Incident schema initialized.')
             return 0
-        queries(service, settings.prometheus_namespace)
+        validate_identity(service, settings.prometheus_namespace)
         source = Prometheus(settings)
         try:
             result = await evaluate_service(service, source, store, rules)

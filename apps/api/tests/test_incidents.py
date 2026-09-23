@@ -17,12 +17,13 @@ from rook_backend.config import Settings
 from rook_backend.database import Database
 from rook_backend.incident_store import PostgresIncidentStore, incidents, metadata
 from rook_backend.incidents import Rules, InvalidTransition, evaluate_service
-from rook_backend.telemetry import Measurement, ServiceMetrics, Unavailable
+from rook_backend.telemetry import Measurement, ServiceMetrics, Unavailable, queries
 
 
 def snapshot(value=0.2, status="measured", timestamp=990, now=1000):
     return ServiceMetrics(
         service_name="frontend", service_namespace="opentelemetry-demo",
+        evidence_queries=queries('frontend', 'opentelemetry-demo'),
         evaluation_timestamp=now, freshness_threshold_seconds=120,
         metrics={"error_ratio": Measurement(value=value, unit="ratio", status=status,
                   oldest_latest_sample_timestamp=timestamp),
