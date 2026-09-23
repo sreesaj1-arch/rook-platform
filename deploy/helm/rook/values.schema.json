@@ -1,0 +1,205 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "api": {
+      "type": "object",
+      "required": [
+        "image",
+        "imagePullPolicy",
+        "replicas",
+        "resources"
+      ],
+      "properties": {
+        "image": {
+          "type": "string",
+          "minLength": 1
+        },
+        "imagePullPolicy": {
+          "enum": [
+            "Always",
+            "IfNotPresent",
+            "Never"
+          ]
+        },
+        "replicas": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "resources": {
+          "type": "object"
+        }
+      }
+    },
+    "frontend": {
+      "type": "object",
+      "required": [
+        "image",
+        "imagePullPolicy",
+        "replicas",
+        "resources"
+      ],
+      "properties": {
+        "image": {
+          "type": "string",
+          "minLength": 1
+        },
+        "imagePullPolicy": {
+          "enum": [
+            "Always",
+            "IfNotPresent",
+            "Never"
+          ]
+        },
+        "replicas": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "resources": {
+          "type": "object"
+        }
+      }
+    },
+    "worker": {
+      "type": "object",
+      "required": [
+        "image",
+        "imagePullPolicy",
+        "replicas",
+        "resources"
+      ],
+      "properties": {
+        "image": {
+          "type": "string",
+          "minLength": 1
+        },
+        "imagePullPolicy": {
+          "enum": [
+            "Always",
+            "IfNotPresent",
+            "Never"
+          ]
+        },
+        "replicas": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "resources": {
+          "type": "object"
+        },
+        "services": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$"
+          }
+        },
+        "intervalSeconds": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 3600
+        },
+        "errorRatio": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "p95Seconds": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    },
+    "telemetry": {
+      "type": "object",
+      "properties": {
+        "prometheusUrl": {
+          "type": "string"
+        },
+        "sources": {
+          "type": "object",
+          "maxProperties": 20
+        },
+        "timeoutSeconds": {
+          "type": "number",
+          "minimum": 0.05,
+          "maximum": 10
+        },
+        "deadlineSeconds": {
+          "type": "number",
+          "minimum": 0.05,
+          "maximum": 30
+        },
+        "freshnessSeconds": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 300
+        }
+      }
+    },
+    "databaseReadinessTimeoutSeconds": {
+      "type": "number",
+      "minimum": 0.05,
+      "maximum": 10
+    },
+    "postgres": {
+      "type": "object",
+      "properties": {
+        "image": {
+          "type": "string",
+          "minLength": 1
+        },
+        "database": {
+          "type": "string",
+          "minLength": 1
+        },
+        "username": {
+          "type": "string",
+          "minLength": 1
+        },
+        "secret": {
+          "type": "object",
+          "required": [
+            "name",
+            "passwordKey",
+            "create"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "passwordKey": {
+              "type": "string",
+              "minLength": 1
+            },
+            "create": {
+              "type": "boolean"
+            },
+            "password": {
+              "type": "string"
+            }
+          }
+        },
+        "storage": {
+          "type": "object",
+          "properties": {
+            "size": {
+              "type": "string",
+              "minLength": 1
+            },
+            "storageClass": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

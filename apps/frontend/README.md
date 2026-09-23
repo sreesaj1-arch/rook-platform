@@ -20,7 +20,20 @@ Open `http://127.0.0.1:5173`. Keep the existing Rook API running at
 The dev server binds to loopback and fails if 5173 is occupied. Stop only this
 foreground dev server with Ctrl+C. The proxy is development-only; the build in
 `dist/` would require equivalent `/api` routing when hosted. No deployment is
-included.
+included in the Vite server. The optional production container and local
+[Helm deployment](../../deploy/helm/rook/README.md) serve the same build with Nginx.
+
+## Production container
+
+Build with `docker build -t rook-frontend:k8s-local apps/frontend` from the repository
+root. The multi-stage image uses `npm ci` and `npm run build`, then serves only the
+static build with Nginx as UID/GID 10001 on port 8080. `ROOK_API_UPSTREAM` configures
+the internal API host and port (default `api:8000`; Helm supplies its Service name).
+Only that environment variable is substituted into Nginx configuration; Nginx
+request variables remain intact. `/api/` is forwarded with the prefix removed,
+matching the unchanged Vite development proxy. `/healthz` checks the static server.
+No telemetry is bundled into the image. Container runtime validation remains
+pending when Docker/Kubernetes are unavailable.
 
 ## Incident register
 

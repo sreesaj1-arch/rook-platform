@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-config
+  labels:
+    {{- include "rook.labels" . | nindent 4 }}
+data:
+  ROOK_DB_HOST: {{ printf "%s-postgres" .Release.Name | quote }}
+  ROOK_DB_PORT: "5432"
+  ROOK_DB_NAME: {{ .Values.postgres.database | quote }}
+  ROOK_DB_USER: {{ .Values.postgres.username | quote }}
+  ROOK_READINESS_TIMEOUT_SECONDS: {{ .Values.databaseReadinessTimeoutSeconds | quote }}
+  {{- if .Values.telemetry.prometheusUrl }}
+  ROOK_PROMETHEUS_URL: {{ .Values.telemetry.prometheusUrl | quote }}
+  {{- end }}
+  ROOK_PROMETHEUS_NAMESPACE: {{ .Values.telemetry.namespace | quote }}
+  ROOK_TELEMETRY_SOURCES: {{ .Values.telemetry.sources | toJson | quote }}
+  ROOK_PROMETHEUS_TIMEOUT_SECONDS: {{ .Values.telemetry.timeoutSeconds | quote }}
+  ROOK_PROMETHEUS_DEADLINE_SECONDS: {{ .Values.telemetry.deadlineSeconds | quote }}
+  ROOK_PROMETHEUS_FRESHNESS_SECONDS: {{ .Values.telemetry.freshnessSeconds | quote }}
+  ROOK_WORKER_SERVICES: {{ .Values.worker.services | toJson | quote }}
+  ROOK_WORKER_INTERVAL_SECONDS: {{ .Values.worker.intervalSeconds | quote }}
+  ROOK_WORKER_ERROR_RATIO: {{ .Values.worker.errorRatio | quote }}
+  ROOK_WORKER_P95_SECONDS: {{ .Values.worker.p95Seconds | quote }}
+  ROOK_CHANGE_ENVIRONMENT: {{ .Values.changes.environment | quote }}
+  ROOK_CHANGE_CORRELATION_WINDOW_SECONDS: {{ .Values.changes.correlationWindowSeconds | quote }}
+{{- if .Values.postgres.secret.create }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Values.postgres.secret.name | quote }}
+  labels:
+    {{- include "rook.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  {{ .Values.postgres.secret.passwordKey | quote }}: {{ required "Set postgres.secret.password or use an existing Secret" .Values.postgres.secret.password | quote }}
+{{- end }}

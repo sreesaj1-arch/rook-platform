@@ -1,0 +1,107 @@
+{{- range $component := list "api" "worker" "frontend" }}
+{{- $values := index $.Values $component }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $.Release.Name }}-{{ $component }}
+  labels:
+    {{- include "rook.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+spec:
+  replicas: {{ $values.replicas }}
+  {{- if eq $component "worker" }}
+  strategy:
+    type: Recreate
+  {{- end }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ $.Release.Name | quote }}
+      app.kubernetes.io/component: {{ $component }}
+  template:
+    metadata:
+      labels:
+        {{- include "rook.labels" $ | nindent 8 }}
+        app.kubernetes.io/component: {{ $component }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/config.yaml") $ | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        fsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      {{- if eq $component "api" }}
+      initContainers:
+        - name: initialize-schema
+          image: {{ $values.image | quote }}
+          imagePullPolicy: {{ $values.imagePullPolicy }}
+          command: [python, -m, rook_backend.incident_cli, init-db]
+          {{- include "rook.env" $ | nindent 10 }}
+          securityContext:
+            {{- include "rook.security" $ | nindent 12 }}
+          resources:
+            {{- toYaml $values.resources | nindent 12 }}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      {{- end }}
+      containers:
+        - name: {{ $component }}
+          image: {{ $values.image | quote }}
+          imagePullPolicy: {{ $values.imagePullPolicy }}
+          securityContext:
+            {{- include "rook.security" $ | nindent 12 }}
+          resources:
+            {{- toYaml $values.resources | nindent 12 }}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+          {{- if eq $component "frontend" }}
+          env:
+            - name: ROOK_API_UPSTREAM
+              value: {{ printf "%s-api:8000" $.Release.Name | quote }}
+          ports: [{name: http, containerPort: 8080}]
+          startupProbe:
+            httpGet: {path: /healthz, port: http}
+            failureThreshold: 30
+            periodSeconds: 2
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+          readinessProbe:
+            httpGet: {path: /index.html, port: http}
+          {{- else }}
+          {{- include "rook.env" $ | nindent 10 }}
+          {{- if eq $component "worker" }}
+          command: [python, -m, rook_backend.worker]
+          startupProbe:
+            exec: {command: [python, -m, rook_backend.worker, --healthcheck]}
+            # Covers the maximum configured sweep budget (855s).
+            failureThreshold: 120
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            exec: {command: [python, -m, rook_backend.worker, --healthcheck]}
+            periodSeconds: 15
+            timeoutSeconds: 5
+          readinessProbe:
+            exec: {command: [python, -m, rook_backend.worker, --healthcheck]}
+            periodSeconds: 15
+            timeoutSeconds: 5
+          {{- else }}
+          ports: [{name: http, containerPort: 8000}]
+          startupProbe:
+            httpGet: {path: /health/live, port: http}
+            failureThreshold: 30
+            periodSeconds: 2
+          livenessProbe:
+            httpGet: {path: /health/live, port: http}
+            timeoutSeconds: 2
+          readinessProbe:
+            httpGet: {path: /health/ready, port: http}
+            timeoutSeconds: 12
+            periodSeconds: 15
+          {{- end }}
+          {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {sizeLimit: 64Mi}
+{{- end }}
