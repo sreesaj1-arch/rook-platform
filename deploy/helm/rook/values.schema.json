@@ -29,6 +29,12 @@
         },
         "resources": {
           "type": "object"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 63,
+          "pattern": "^[a-zA-Z0-9]([a-zA-Z0-9_.-]*[a-zA-Z0-9])?$"
         }
       }
     },
@@ -200,6 +206,99 @@
           }
         }
       }
+    },
+    "apiTraffic": {
+      "enum": [
+        "stable",
+        "canary"
+      ]
+    },
+    "canary": {
+      "type": "object",
+      "required": [
+        "image",
+        "imagePullPolicy",
+        "replicas",
+        "resources",
+        "enabled",
+        "version"
+      ],
+      "properties": {
+        "image": {
+          "type": "string",
+          "minLength": 1
+        },
+        "imagePullPolicy": {
+          "enum": [
+            "Always",
+            "IfNotPresent",
+            "Never"
+          ]
+        },
+        "replicas": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "resources": {
+          "type": "object"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 63,
+          "pattern": "^[a-zA-Z0-9]([a-zA-Z0-9_.-]*[a-zA-Z0-9])?$"
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "apiTraffic": {
+            "const": "canary"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "canary": {
+            "properties": {
+              "enabled": {
+                "const": true
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "canary": {
+            "properties": {
+              "enabled": {
+                "const": true
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "api": {
+            "properties": {
+              "replicas": {
+                "minimum": 1
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

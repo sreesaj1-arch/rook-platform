@@ -1,5 +1,18 @@
-{{- range $component := list "api" "worker" "frontend" }}
-{{- $values := index $.Values $component }}
+{{- if and (eq .Values.apiTraffic "canary") (not .Values.canary.enabled) }}
+{{- fail "Cannot route to a disabled canary" }}
+{{- end }}
+{{- if and .Values.canary.enabled (lt (int .Values.api.replicas) 1) }}
+{{- fail "Keep at least one stable API replica while canary is enabled" }}
+{{- end }}
+{{- $components := list "api" "worker" "frontend" }}
+{{- if .Values.canary.enabled }}
+{{- $components = append $components "api-canary" }}
+{{- end }}
+{{- range $component := $components }}
+{{- $key := $component }}
+{{- if eq $component "api-canary" }}{{- $key = "canary" }}{{- end }}
+{{- $values := index $.Values $key }}
+{{- $isApi := or (eq $component "api") (eq $component "api-canary") }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -23,6 +36,9 @@ spec:
       labels:
         {{- include "rook.labels" $ | nindent 8 }}
         app.kubernetes.io/component: {{ $component }}
+        {{- if $isApi }}
+        app.kubernetes.io/version: {{ $values.version | quote }}
+        {{- end }}
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/config.yaml") $ | sha256sum }}
     spec:
@@ -31,7 +47,7 @@ spec:
       securityContext:
         fsGroup: 10001
         seccompProfile: {type: RuntimeDefault}
-      {{- if eq $component "api" }}
+      {{- if $isApi }}
       initContainers:
         - name: initialize-schema
           image: {{ $values.image | quote }}

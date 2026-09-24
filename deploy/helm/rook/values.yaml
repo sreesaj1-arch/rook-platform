@@ -1,8 +1,20 @@
 # Local images must be loaded into the cluster or replaced with registry images.
 api:
+  version: stable
   image: rook-backend:local
   imagePullPolicy: IfNotPresent
   replicas: 1
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: "1", memory: 512Mi}
+# Whole-Service selection. Use the guarded switch script; no weighted split.
+apiTraffic: stable
+canary:
+  enabled: false
+  image: rook-backend:canary-local
+  imagePullPolicy: IfNotPresent
+  replicas: 1
+  version: canary-local
   resources:
     requests: {cpu: 100m, memory: 128Mi}
     limits: {cpu: "1", memory: 512Mi}

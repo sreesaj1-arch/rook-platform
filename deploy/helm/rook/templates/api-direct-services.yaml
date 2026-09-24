@@ -1,0 +1,21 @@
+{{- $tracks := list "stable" }}
+{{- if .Values.canary.enabled }}{{- $tracks = append $tracks "canary" }}{{- end }}
+{{- range $track := $tracks }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $.Release.Name }}-api-{{ $track }}
+  labels:
+    {{- include "rook.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: api-{{ $track }}
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/instance: {{ $.Release.Name | quote }}
+    app.kubernetes.io/component: {{ if eq $track "stable" }}api{{ else }}api-canary{{ end }}
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+{{- end }}

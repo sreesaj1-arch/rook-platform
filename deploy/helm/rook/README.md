@@ -2,8 +2,8 @@
 
 Docker Compose remains the primary development path. This chart packages the
 existing API, worker, PostgreSQL and React dashboard without changing Compose or
-the external Demo. Kubernetes runtime verification is pending until a local cluster
-is available. There is no ingress, public database, authentication, cloud deployment,
+the external Demo. The existing local deployment and an operator-controlled canary
+exercise have been verified; see [the recorded results](CANARY.md#validation-record-and-limitations). There is no ingress, public database, authentication, cloud deployment,
 telemetry generator, or Kubernetes event collector in this chart.
 
 ## Prerequisites and images
@@ -161,6 +161,10 @@ the database. Frontend probes check only the static server. API/worker use UID/G
 
 ## Safe uninstall and limitations
 
+For separate stable/canary API workloads, a readiness-gated Service switch, and
+explicit operator rollback, follow [the canary runbook](CANARY.md). It uses the
+same database and leaves the worker, frontend, and Compose behavior unchanged.
+
 After confirming the context, namespace and release belong to this installation:
 
 ```powershell
@@ -176,18 +180,18 @@ uninstall, so securely preserve its password beforehand. No volume deletion,
 Docker prune, or unrelated-resource cleanup is part of these instructions.
 
 This is a single-node local deployment foundation, not HA, backups, a migration
-framework, a completed canary/rollback demonstration, or automatic Kubernetes
-deployment observation. Storage resizing and PostgreSQL major upgrades require
+framework, automatic Kubernetes deployment observation. The local canary/rollback
+demonstration is documented separately above. Storage resizing and PostgreSQL major upgrades require
 separate planning. Existing Compose remains usable and independent.
 
 ## Validation status
 
-The implementation pass ran 120 backend tests successfully (one optional integration
-test skipped; two dependency deprecation warnings), 21 frontend tests, TypeScript,
-and the production Vite build. Python syntax, TOML, OpenAPI, chart metadata/values
-YAML, JSON Schema validation, template control-block balance, and whitespace checks
-passed. Control-block checks are not a substitute for Helm lint or manifest rendering.
-Helm was absent from PATH and `tmp/helm-tools` was empty; no tools were downloaded
-during this pass. `kubectl config get-contexts` returned no contexts. Helm lint,
-rendered Kubernetes YAML validation, container execution, and cluster runtime checks
-remain pending. No Kubernetes pods or fabricated runtime results are claimed.
+The canary milestone ran 120 backend tests successfully (one optional integration
+test skipped; two dependency deprecation warnings), 21 frontend unit tests, the
+existing browser test against the Kubernetes frontend, TypeScript, and the Vite
+production build. Eight chart tests and five switch-script tests passed. Helm 4.3.0
+was found in the existing WinGet installation; lint and stable/canary rendering
+passed. Python/PowerShell syntax, TOML, OpenAPI, YAML/schema and whitespace checks
+passed. The Docker Desktop node and all Rook components were Ready. Real health,
+metrics, frontend proxy, worker evaluation, canary switching and explicit rollback
+were verified; see the canary runbook for the exact results and limitations.

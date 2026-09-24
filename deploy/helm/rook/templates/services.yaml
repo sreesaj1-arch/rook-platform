@@ -14,7 +14,7 @@ spec:
   {{- end }}
   selector:
     app.kubernetes.io/instance: {{ $.Release.Name | quote }}
-    app.kubernetes.io/component: {{ $component }}
+    app.kubernetes.io/component: {{ if and (eq $component "api") (eq $.Values.apiTraffic "canary") }}api-canary{{ else }}{{ $component }}{{ end }}
   ports:
     - name: {{ if eq $component "postgres" }}postgres{{ else }}http{{ end }}
       port: {{ $port }}
