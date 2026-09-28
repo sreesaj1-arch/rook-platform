@@ -1,8 +1,7 @@
-name: Backend CI
+name: Rook CI
 
 on:
   pull_request:
-    branches: [main]
   push:
     branches: [main]
   workflow_dispatch:
@@ -10,10 +9,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: rook-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend-tests:
     name: Backend tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     defaults:
       run:
@@ -24,6 +27,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
+          fetch-depth: 0 # Commit-range whitespace validation, including PR merge commits.
 
       - name: Install uv
         uses: astral-sh/setup-uv@6b9c6063abd6010835644d4c2e1bef4cf5cd0fca # v6.0.1
@@ -39,3 +43,81 @@ jobs:
 
       - name: Run backend tests
         run: uv run --locked python -m pytest
+
+      - name: Python syntax, TOML, OpenAPI and whitespace
+        working-directory: .
+        env:
+          DIFF_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: uv run --project apps/api --locked python scripts/ci/check_backend.py
+
+      - name: CI scanner failure-handling tests
+        working-directory: .
+        run: uv run --project apps/api --locked python -m unittest discover -s scripts/ci/tests
+
+  frontend:
+    name: Frontend checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: apps/frontend
+        shell: bash
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24.15.0"
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Frontend unit tests
+        run: npm test
+      - name: TypeScript and production build
+        run: npm run build # Includes tsc --noEmit; do not repeat it.
+
+  containers:
+    name: Container builds and advisory scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Build API/worker and frontend images (no push)
+        env:
+          IMAGE_TAG: ci-${{ github.sha }}
+        run: |
+          docker build --tag "rook-backend:$IMAGE_TAG" apps/api
+          docker build --tag "rook-frontend:$IMAGE_TAG" apps/frontend
+      - name: Advisory vulnerability scan
+        env:
+          IMAGE_TAG: ci-${{ github.sha }}
+        run: python3 scripts/ci/scan_images.py "rook-backend:$IMAGE_TAG" "rook-frontend:$IMAGE_TAG"
+
+  helm:
+    name: Helm and rollback checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@6b9c6063abd6010835644d4c2e1bef4cf5cd0fca # v6.0.1
+        with:
+          version: "0.11.7"
+          enable-cache: false
+      - name: Install checksum-verified Helm 4.2.3 into runner temporary directory
+        run: |
+          mkdir -p "$RUNNER_TEMP/rook-helm"
+          cd "$RUNNER_TEMP/rook-helm"
+          curl --fail --silent --show-error --location --max-time 120 \
+            https://get.helm.sh/helm-v4.2.3-linux-amd64.tar.gz --output helm.tar.gz
+          echo 'e9b88b4ee95b18c706839c28d3a0220e5bc470e9cd9262410c90793c45ff8b7c  helm.tar.gz' | sha256sum --check
+          tar -xzf helm.tar.gz linux-amd64/helm
+          echo "$RUNNER_TEMP/rook-helm/linux-amd64" >> "$GITHUB_PATH"
+      - name: YAML, Helm lint/render and canary contracts
+        run: uv run --no-project --python 3.13.13 --with-requirements scripts/ci/requirements.txt python scripts/ci/check_helm.py
+      - name: Operator rollback tests (command doubles; no cluster)
+        shell: pwsh
+        run: ./deploy/helm/rook/tests/switch-api.tests.ps1

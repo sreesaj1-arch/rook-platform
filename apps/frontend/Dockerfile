@@ -6,7 +6,8 @@ COPY index.html tsconfig.json vite.config.ts ./
 COPY src ./src
 RUN npm run build
 
-FROM nginx:1.30.5-alpine
+# Same Nginx version; omit unused image-filter/fontconfig/libexpat dependencies.
+FROM nginx:1.30.5-alpine3.24-slim@sha256:32463212baf0e7d91aded2e9b843a4f2b9e017804b8c9d5bae7b51dcef64389c
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf.template /etc/nginx/rook.conf.template
 ENV ROOK_API_UPSTREAM=api:8000
