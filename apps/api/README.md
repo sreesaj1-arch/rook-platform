@@ -394,9 +394,9 @@ Do not add `--volumes` or run Docker prune. The `.env` values configure this loc
 
 ## Continuous integration
 
-[Backend CI](../../.github/workflows/backend-ci.yml) runs on pull requests targeting `main`, pushes to `main`, and manual dispatch, without path filters. One Ubuntu job has a 10-minute timeout and read-only repository permissions; checkout does not persist credentials. Actions are pinned to full commit SHAs, and uv is pinned to 0.11.7.
+[Rook CI](../../.github/workflows/backend-ci.yml) extends the existing backend workflow with separate frontend, container and Helm jobs. It runs on every pull request, pushes to `main`, and manual dispatch, without path filters. Jobs use read-only repository permissions; checkout does not persist credentials. Actions are pinned to verified full commit SHAs, and uv is pinned to 0.11.7.
 
-CI reads Python from `.python-version`, then runs `uv sync --locked --managed-python` and `uv run --locked python -m pytest` in `apps/api`. Test failures fail the job, and dependency warnings remain visible. It performs no deployment. Local workflow validation is not an actual GitHub Actions run; execution must be verified after pushing. Manual dispatch becomes available once the workflow exists on the default branch.
+The backend job retains its name and 10-minute timeout. It reads Python from `.python-version`, runs `uv sync --locked --managed-python` and `uv run --locked python -m pytest`, then checks Python syntax, TOML, OpenAPI and changed-file whitespace. Test failures fail the job; dependency warnings remain visible. See [CI checks and local reproduction](../../docs/CI.md) for all jobs, advisory vulnerability scanning, and intentionally separate live integration checks. No image publishing or deployment occurs. Local validation is not an actual GitHub Actions run; execution must be verified after pushing. Manual dispatch becomes available once the workflow exists on the default branch.
 
 ## Configuration and structure
 

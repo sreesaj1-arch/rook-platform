@@ -1,4 +1,16 @@
-FROM python:3.13.13-slim-bookworm AS builder
+FROM python:3.13.13-slim-bookworm AS base
+
+# Targeted Bookworm security fixes; no distribution-wide upgrade.
+# See docs/IMAGE_SECURITY.md for CVEs, package provenance and remaining findings.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends --only-upgrade \
+        libgnutls30=3.7.9-2+deb12u7 \
+        libpcre2-8-0=10.42-1+deb12u1 \
+        libssl3=3.0.22-1~deb12u1 \
+        openssl=3.0.22-1~deb12u1 \
+    && rm -rf /var/lib/apt/lists/*
+
+FROM base AS builder
 
 WORKDIR /app
 ENV UV_PYTHON_DOWNLOADS=never \
@@ -10,7 +22,7 @@ COPY src ./src
 RUN python -c "import pathlib, platform; assert platform.python_version() == pathlib.Path('.python-version').read_text().strip()" \
     && uv sync --locked --no-dev --no-editable --python /usr/local/bin/python
 
-FROM python:3.13.13-slim-bookworm AS runtime
+FROM base AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

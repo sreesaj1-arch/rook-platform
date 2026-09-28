@@ -127,6 +127,7 @@ scripts/                 Development and operations utilities
 ## Documentation
 
 - [Project Charter](docs/PROJECT_CHARTER.md)
+- [Pull-request CI and local checks](docs/CI.md)
 - [Architecture Overview](docs/architecture/README.md)
 - [System Context](docs/architecture/system-context.md)
 - [Container View](docs/architecture/container-view.md)
