@@ -1,0 +1,10 @@
+# Explicit operator request only. Never include this in an automatic apply loop.
+# Run only after reviewing the Application revision, values, diff and readiness gates.
+operation:
+  initiatedBy:
+    username: local-operator
+  sync:
+    prune: false
+    syncStrategy:
+      apply:
+        force: false
