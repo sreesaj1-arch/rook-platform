@@ -1,0 +1,22 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: rook-local
+  namespace: argocd
+spec:
+  description: Local Rook only; external database Secret and namespace are operator-owned.
+  sourceRepos:
+    - https://github.com/sreesaj1-arch/rook-platform.git
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: rook-k8s-local
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+    - group: apps
+      kind: Deployment
+    - group: apps
+      kind: StatefulSet
+    - group: ""
+      kind: Service
+    - group: ""
+      kind: ConfigMap

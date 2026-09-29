@@ -161,6 +161,10 @@ the database. Frontend probes check only the static server. API/worker use UID/G
 
 ## Safe uninstall and limitations
 
+For an opt-in handoff to manual Argo CD reconciliation, follow the
+[GitOps runbook](../../gitops/argocd/README.md). After adoption, use its Git-based
+sync/rollback/detachment procedure rather than direct Helm mutations below.
+
 For separate stable/canary API workloads, a readiness-gated Service switch, and
 explicit operator rollback, follow [the canary runbook](CANARY.md). It uses the
 same database and leaves the worker, frontend, and Compose behavior unchanged.

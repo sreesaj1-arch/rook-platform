@@ -19,6 +19,10 @@ Helm is mandatory in its CI job: rendering cannot silently pass as skipped tests
 Rendered YAML is parsed by the existing chart tests, which also check selectors,
 probes, stable/canary separation and unchanged unrelated resources. YAML parsing
 supports the existing Compose `!override` tags. No Kubernetes context is needed.
+The same Helm job also runs the local [GitOps safety contracts](../deploy/gitops/argocd/test_gitops.py):
+repository/revision/destination boundaries, external Secrets, manual-only sync,
+no pruning/force/finalizers, and environment rendering. It does not install or sync
+Argo CD. Deployment remains a separate [operator-reviewed action](../deploy/gitops/argocd/README.md).
 
 Jobs use Ubuntu 24.04, `contents: read`, full-SHA action pins and checkout with
 persisted credentials disabled. PRs use `pull_request`, never `pull_request_target`.

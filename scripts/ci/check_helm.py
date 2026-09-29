@@ -25,4 +25,5 @@ for overrides in ([], ["--set", "canary.enabled=true", "--set", "apiTraffic=cana
 # Existing tests render default, staged-canary and selected-canary manifests,
 # parse their YAML, verify probes/selectors and require unrelated resources unchanged.
 subprocess.run([sys.executable, "deploy/helm/rook/tests/test_chart.py"], check=True)
+subprocess.run([sys.executable, "deploy/gitops/argocd/test_gitops.py"], check=True)
 print("YAML, Helm lint/render and canary contracts passed")

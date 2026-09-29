@@ -8,6 +8,10 @@ frontend continues proxying to `rook-api`; worker and PostgreSQL are unchanged.
 
 ## Preconditions
 
+These Helm-mutating commands apply only to Helm-owned installations. After an
+Argo CD handoff, use the [GitOps canary and rollback gates](../../gitops/argocd/README.md#5-canary-traffic-switch-and-rollback)
+with reviewed Git desired state and manual sync; do not run competing Helm upgrades.
+
 Use an existing local release installed using [the Kubernetes runbook](README.md),
 Helm 3.14 or newer, kubectl, and Docker. Keep its namespace, Secret, database,
 telemetry settings and images. Run from the repository root. Do not run concurrent

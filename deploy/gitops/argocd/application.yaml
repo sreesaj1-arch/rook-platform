@@ -1,0 +1,57 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  # Match the Helm release name: default Argo tracking labels must not change selectors.
+  name: rook
+  namespace: argocd
+  # Deliberately no resource-deletion finalizer.
+spec:
+  project: rook-local
+  source:
+    repoURL: https://github.com/sreesaj1-arch/rook-platform.git
+    # Existing reviewed chart commit. Local/uncommitted files are not fetched by Argo.
+    targetRevision: b5634406b9fcab99c63460ad24a24ef7d0e17459
+    path: deploy/helm/rook
+    helm:
+      releaseName: rook
+      # Docker Desktop example. Review against the live release before adoption.
+      # Inline values avoid referencing a new values file absent from the pinned commit.
+      valuesObject:
+        api:
+          image: rook-backend:gitops-b5634406
+          imagePullPolicy: Never
+          version: gitops-b5634406
+          replicas: 1
+        worker:
+          image: rook-backend:gitops-b5634406
+          imagePullPolicy: Never
+          replicas: 1
+          services: [frontend]
+          intervalSeconds: 30
+          errorRatio: 0.05
+          p95Seconds: 0.5
+        frontend:
+          image: rook-frontend:gitops-b5634406
+          imagePullPolicy: Never
+          replicas: 1
+        postgres:
+          secret:
+            create: false
+            name: rook-db
+            passwordKey: password
+        telemetry:
+          # Verified from this Docker Desktop cluster; recheck on another machine.
+          prometheusUrl: http://host.docker.internal:9090
+          namespace: opentelemetry-demo
+          sources: {}
+        apiTraffic: stable
+        canary:
+          enabled: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: rook-k8s-local
+  # Manual sync only: absence of automated disables auto-sync/prune/self-heal.
+  syncPolicy:
+    syncOptions:
+      - FailOnSharedResource=true
+  revisionHistoryLimit: 10

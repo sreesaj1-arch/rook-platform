@@ -128,6 +128,7 @@ scripts/                 Development and operations utilities
 
 - [Project Charter](docs/PROJECT_CHARTER.md)
 - [Pull-request CI and local checks](docs/CI.md)
+- [Local Argo CD GitOps handoff and runbook](deploy/gitops/argocd/README.md)
 - [Architecture Overview](docs/architecture/README.md)
 - [System Context](docs/architecture/system-context.md)
 - [Container View](docs/architecture/container-view.md)
